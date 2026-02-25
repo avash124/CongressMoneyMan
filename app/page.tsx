@@ -1,65 +1,111 @@
-import Image from "next/image";
+"use client"
+
+import{ useRouter } from  "next/navigation" 
+import{ useState  } from  "react"
+
+function parseSearch(raw: string): Record<string, string> {
+  const s = raw.trim();
+
+  if (/^\d{5}(-\d{4})?$/.test(s)) {
+    return { zip: s };
+  }
+  const districtMatch = s.match(/^([A-Za-z]{2})\s*-?\s*(\d{1,2})$/);
+  if (districtMatch) {
+    return { state: districtMatch[1].toUpperCase(), district: districtMatch[2] };
+  }
+
+  return { name: s };
+}
 
 export default function Home() {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [chamber, setChamber] = useState("");
+  const [stockQuery, setStockQuery] = useState("");
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const cleaned = query.trim();
+    if (!cleaned) return;
+
+    let filters: Record<string, string>;
+    if (chamber === "Senate") {
+      filters = { name: cleaned };
+    } else {
+      filters = parseSearch(cleaned) as Record<string, string>;
+    }
+    if (chamber) filters.chamber = chamber;
+    const params = new URLSearchParams(
+      Object.entries(filters).reduce((acc, [key, value]) => {
+        acc[key] = String(value);
+        return acc;
+      }, {} as Record<string, string>)
+    );
+    router.push(`/search?${params.toString()}`);
+  }
+  
+  function StockSubmit(e: React.FormEvent<HTMLFormElement>){
+    e.preventDefault();
+    const cleaned = stockQuery.trim();
+    if(!cleaned) return;
+
+    const isTicker = /^[A-Z]{1,5}$/.test(cleaned);
+    const params = new URLSearchParams({
+      [isTicker ? 'ticker' : 'company']: cleaned
+    });
+    router.push(`/search?${params.toString()}`);
+  }
+  
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen flex flex-col items-center justify-center px-6">
+      <h1 className="text-4xl font-bold mb-3">Representative Search</h1>
+      <p className="text-gray-600 mb-8">
+        {chamber === "Senate" ? "Search by name" : "Search by name, district (CA-47), or zipcode."}
+      </p>
+
+      <form onSubmit={onSubmit} className="w-full max-w-xl">
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <select
+              value={chamber}
+              onChange={(e) => setChamber(e.target.value)}
+              className="border rounded-lg p-3 outline-none focus:ring-2 focus:ring-black bg-white"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+              <option value="House">House</option>
+              <option value="Senate">Senate</option>
+            </select>
+            <input
+              className="flex-1 border rounded-lg p-3 outline-none focus:ring-2 focus:ring-black"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <button
+              type="submit"
+              className="bg-black text-white rounded-lg px-5 py-3 hover:opacity-90"
+            >
+              Search
+            </button>
+          </div>
         </div>
-      </main>
-    </div>
+      </form>
+      <h2 className="text-4xl font-bold mb-3 mt-8">Stock Search</h2>
+      <p className="text-gray-600 mb-8">Search by ticker or company name</p>
+      <form onSubmit={StockSubmit} className="w-full max-w-xl">
+        <div className="flex gap-2">
+          <input
+            className="flex-1 border rounded-lg p-3 outline-none focus:ring-2 focus:ring-black"
+              value={stockQuery}
+            onChange={(e) => setStockQuery(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="bg-black text-white rounded-lg px-5 py-3 hover:opacity-90"
+          >
+            Search
+          </button>
+        </div>
+      </form>
+    </main>
+    
   );
 }
