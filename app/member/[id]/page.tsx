@@ -1,0 +1,53 @@
+import { Member } from "@/types/member"
+import MemberHeader from "@/components/MemberHeader"
+import TopIndustriesCard from "@/components/TopIndustriesCard"
+import PacDonationsSection from "@/components/PACDonationsCard"
+
+export default async function MemberPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+
+  const res = await fetch(
+    `http://localhost:3000/api/member/${id}`,
+    { cache: "no-store" }
+  )
+
+  const data = await res.json()
+
+  if (!data.candidate) {
+    return <div>Member not found</div>
+  }
+
+  const member: Member = {
+    id: id,
+    name: data.candidate.name,
+    party: data.candidate.party,
+    state: data.candidate.state,
+    district: data.candidate.district,
+    totalRaised: data.totals?.receipts || 0,
+    totalSpent: data.totals?.disbursements || 0,
+    topIndustries: [],
+    pacDonations: [],
+  }
+
+  return (
+    <div style={{ padding: "2rem" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "2rem",
+        }}
+      >
+        <MemberHeader member={member} />
+        <TopIndustriesCard industries={member.topIndustries} />
+      </div>
+
+      <PacDonationsSection donations={member.pacDonations} />
+    </div>
+  )
+}
