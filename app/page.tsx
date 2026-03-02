@@ -57,9 +57,9 @@ export default function Home() {
   }
   
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6">
+    <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-white text-black">
       <h1 className="text-4xl font-bold mb-3">Representative Search</h1>
-      <p className="text-gray-600 mb-8">
+      <p className="text-black mb-8">
         {chamber === "Senate" ? "Search by name" : "Search by name, district (CA-47), or zipcode."}
       </p>
 
@@ -89,7 +89,7 @@ export default function Home() {
         </div>
       </form>
       <h2 className="text-4xl font-bold mb-3 mt-8">Stock Search</h2>
-      <p className="text-gray-600 mb-8">Search by ticker or company name</p>
+      <p className="text-black mb-8">Search by ticker or company name</p>
       <form onSubmit={StockSubmit} className="w-full max-w-xl">
         <div className="flex gap-2">
           <input
