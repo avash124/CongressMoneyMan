@@ -9,7 +9,8 @@ export default function HousePage() {
             House Members
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            House member rankings and details will appear here.
+            Scroll through current House members ranked by estimated live stock
+            holdings and estimated live net worth.
           </p>
         </div>
 
