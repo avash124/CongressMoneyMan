@@ -59,10 +59,6 @@ export default function MapPage() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <div className="max-w-3xl">
           <h1 className="text-4xl font-bold tracking-tight">Congressional District Map</h1>
-          <p className="mt-3 text-base text-slate-600">
-            Hover a district to inspect it and click to lock the selection. This page
-            loads district shapes from <code>/public/geo/cd119.geojson</code>.
-          </p>
         </div>
 
         {loadError ? (
