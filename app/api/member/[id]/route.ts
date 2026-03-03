@@ -1,3 +1,5 @@
+// app/api/member/[id]/route.ts
+
 import { NextResponse } from "next/server"
 import { Member, PacDonation} from "@/types/member"
 
