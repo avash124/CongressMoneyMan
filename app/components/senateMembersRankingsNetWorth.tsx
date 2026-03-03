@@ -107,7 +107,7 @@ function RankingTable({
   )
 }
 
-export default function HouseMembersRankingsNetWorth() {
+export default function SenateMembersRankingsNetWorth() {
   const [rankings, setRankings] = useState<SenateRankingsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -134,7 +134,7 @@ export default function HouseMembersRankingsNetWorth() {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "Failed to load House rankings"
+              : "Failed to load Senate rankings"
           )
         }
       }
