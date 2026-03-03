@@ -3,6 +3,7 @@
 import * as React from "react"
 import type { Feature, FeatureCollection, Geometry } from "geojson"
 import type { LngLatBoundsLike } from "mapbox-gl"
+import { useRouter } from "next/navigation"
 import MapComponent, {
   Layer,
   Popup,
@@ -19,7 +20,9 @@ type DistrictFeatureProperties = {
   district?: string | number
   NAME?: string
   STATE?: string
+  STATEFP?: string
   CD118FP?: string
+  CD119FP?: string
   [key: string]: unknown
 }
 
@@ -70,6 +73,65 @@ const USA_BOUNDS: LngLatBoundsLike = [
   [-179, 15],
   [-66, 72],
 ]
+
+const STATE_FIPS_TO_CODE: Record<string, string> = {
+  "01": "AL",
+  "02": "AK",
+  "04": "AZ",
+  "05": "AR",
+  "06": "CA",
+  "08": "CO",
+  "09": "CT",
+  "10": "DE",
+  "11": "DC",
+  "12": "FL",
+  "13": "GA",
+  "15": "HI",
+  "16": "ID",
+  "17": "IL",
+  "18": "IN",
+  "19": "IA",
+  "20": "KS",
+  "21": "KY",
+  "22": "LA",
+  "23": "ME",
+  "24": "MD",
+  "25": "MA",
+  "26": "MI",
+  "27": "MN",
+  "28": "MS",
+  "29": "MO",
+  "30": "MT",
+  "31": "NE",
+  "32": "NV",
+  "33": "NH",
+  "34": "NJ",
+  "35": "NM",
+  "36": "NY",
+  "37": "NC",
+  "38": "ND",
+  "39": "OH",
+  "40": "OK",
+  "41": "OR",
+  "42": "PA",
+  "44": "RI",
+  "45": "SC",
+  "46": "SD",
+  "47": "TN",
+  "48": "TX",
+  "49": "UT",
+  "50": "VT",
+  "51": "VA",
+  "53": "WA",
+  "54": "WV",
+  "55": "WI",
+  "56": "WY",
+  "60": "AS",
+  "66": "GU",
+  "69": "MP",
+  "72": "PR",
+  "78": "VI",
+}
 
 const districtsFillLayer: LayerProps = {
   id: FILL_LAYER_ID,
@@ -133,11 +195,16 @@ function normalizeDistrict(value?: string | number | null): string {
 
 function getDistrictState(props: DistrictFeatureProperties): string {
   const state = props.state ?? props.STATE
-  return typeof state === "string" ? state.trim().toUpperCase() : ""
+  if (typeof state === "string" && state.trim()) {
+    return state.trim().toUpperCase()
+  }
+
+  const stateFips = typeof props.STATEFP === "string" ? props.STATEFP.trim() : ""
+  return STATE_FIPS_TO_CODE[stateFips] ?? ""
 }
 
 function getDistrictNumber(props: DistrictFeatureProperties): string {
-  return normalizeDistrict(props.district ?? props.CD118FP ?? props.NAME)
+  return normalizeDistrict(props.district ?? props.CD119FP ?? props.CD118FP ?? props.NAME)
 }
 
 function getDistrictKey(state?: string, district?: string | number | null): string {
@@ -162,16 +229,6 @@ function getPartyColor(party?: string): string {
   return "#475569"
 }
 
-function EmptyOverlay({ message }: { message: string }) {
-  return (
-    <div className="pointer-events-none absolute inset-4 flex items-start">
-      <div className="max-w-sm rounded-xl border border-slate-300 bg-white/92 p-4 text-sm text-slate-700 shadow-lg backdrop-blur">
-        {message}
-      </div>
-    </div>
-  )
-}
-
 export type {
   CongressionalMapProps,
   DistrictFeatureProperties,
@@ -189,6 +246,7 @@ export default function CongressionalMap({
   onDistrictSelect,
   className,
 }: CongressionalMapProps) {
+  const router = useRouter()
   const mapRef = React.useRef<MapRef | null>(null)
   const hoveredFeatureIdRef = React.useRef<string | number | null>(null)
   const [popup, setPopup] = React.useState<PopupState | null>(null)
@@ -299,7 +357,11 @@ export default function CongressionalMap({
 
     setInternalSelectedKey(districtKey || null)
     onDistrictSelect?.(district)
-  }, [onDistrictSelect])
+
+    if (district.memberId) {
+      router.push(`/member/${district.memberId}`)
+    }
+  }, [onDistrictSelect, router])
 
   return (
     <div className={className ?? "relative h-[70vh] min-h-[480px] overflow-hidden rounded-2xl border border-slate-300"}>
@@ -351,6 +413,11 @@ export default function CongressionalMap({
                 >
                   {getPartyLabel(popup.district.party)}
                 </div>
+                {popup.district.memberId ? (
+                  <div className="mt-2 text-xs font-medium text-slate-500">
+                    Click district to open profile
+                  </div>
+                ) : null}
               </div>
             </Popup>
           ) : null}

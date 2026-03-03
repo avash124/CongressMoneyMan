@@ -5,7 +5,7 @@ export default function Navbar() {
         <header className="w-full bg-black">
             <div className ="w-full flex justify-between items-center px-0 py-4 text-white">
             <h1 className= "text-xl font-bold pl-4">
-                <Link href="/" className="block hover:text-gray-300">Uncle Sam's Stockings</Link>
+                <Link href="/" className="block hover:text-gray-300">Uncle Sam&apos;s Stockings</Link>
             </h1>
                 
             <nav className="space-x-6 ml-2 pr-4">      

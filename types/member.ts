@@ -8,7 +8,6 @@ export interface Member {
   totalSpent: number
   topIndustries: Industry[]
   pacDonations: PacDonation[]
-  trades?: Trade[]
 }
 
 export interface Industry{

@@ -20,6 +20,12 @@ export default async function MemberPage({
     return <div>Member not found</div>
   }
 
+  const data = await res.json()
+
+  if (!data.candidate) {
+    return <div>Member not found</div>
+  }
+
   const member: Member = await res.json()
 
   return (

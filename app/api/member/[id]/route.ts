@@ -260,15 +260,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await context.params
-
-    const res = await fetch(
-      `https://api.congress.gov/v3/member/${id}?format=json`,
-      {
-        headers: {
-          "X-Api-Key": process.env.CONGRESS_API_KEY!,
-        },
-      }
+    const candidateRes = await fetch(
+      `https://api.open.fec.gov/v1/candidates/search/?candidate_id=${id}&api_key=${apiKey}`
     )
 
     if (!res.ok) {
@@ -278,27 +271,8 @@ export async function GET(
       )
     }
 
-    const data = await res.json()
-    const rawMember = data.member
-
-    if (!rawMember) {
-      return NextResponse.json(
-        { error: "Not found" },
-        { status: 404 }
-      )
-    }
-
-    const formatted = mapCongressMemberToMember(rawMember)
-    const trades = await getCongressTrades(formatted.id)
-
-    const chamber =
-      rawMember.terms?.[rawMember.terms.length - 1]?.chamber
-
-    const candidate = await getFecCandidateId(
-      rawMember.firstName,
-      rawMember.lastName,
-      rawMember.state,
-      chamber
+    const totalsRes = await fetch(
+      `https://api.open.fec.gov/v1/candidate/${id}/totals/?api_key=${apiKey}`
     )
 
     let pacDonations: PacDonation[] = []
@@ -319,8 +293,7 @@ export async function GET(
       trades,
       pacDonations,
     })
-  } catch (error) {
-    console.log("Route error:", error)
+  } catch {
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
