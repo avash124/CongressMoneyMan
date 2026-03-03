@@ -19,7 +19,6 @@ export interface Industry{
 export interface PacDonation {
   pacName: string
   amount: number
-  date: string
 }
 
 export interface Trade {

@@ -1,7 +1,8 @@
 // app/api/member/[id]/route.ts
 
 import { NextResponse } from "next/server"
-import { Member } from "@/types/member"
+import { Member, PacDonation} from "@/types/member"
+
 
 function mapCongressMemberToMember(member: any): Member {
   const terms = member.terms ?? []
@@ -88,6 +89,63 @@ async function getCongressTrades(bioguideId: string) {
   }))
 }
 
+function getStateAbbreviation(stateName: string): string {
+  const states: Record<string, string> = {
+    Alabama: "AL",
+    Alaska: "AK",
+    Arizona: "AZ",
+    Arkansas: "AR",
+    California: "CA",
+    Colorado: "CO",
+    Connecticut: "CT",
+    Delaware: "DE",
+    Florida: "FL",
+    Georgia: "GA",
+    Hawaii: "HI",
+    Idaho: "ID",
+    Illinois: "IL",
+    Indiana: "IN",
+    Iowa: "IA",
+    Kansas: "KS",
+    Kentucky: "KY",
+    Louisiana: "LA",
+    Maine: "ME",
+    Maryland: "MD",
+    Massachusetts: "MA",
+    Michigan: "MI",
+    Minnesota: "MN",
+    Mississippi: "MS",
+    Missouri: "MO",
+    Montana: "MT",
+    Nebraska: "NE",
+    Nevada: "NV",
+    NewHampshire: "NH",
+    NewJersey: "NJ",
+    NewMexico: "NM",
+    NewYork: "NY",
+    NorthCarolina: "NC",
+    NorthDakota: "ND",
+    Ohio: "OH",
+    Oklahoma: "OK",
+    Oregon: "OR",
+    Pennsylvania: "PA",
+    RhodeIsland: "RI",
+    SouthCarolina: "SC",
+    SouthDakota: "SD",
+    Tennessee: "TN",
+    Texas: "TX",
+    Utah: "UT",
+    Vermont: "VT",
+    Virginia: "VA",
+    Washington: "WA",
+    WestVirginia: "WV",
+    Wisconsin: "WI",
+    Wyoming: "WY",
+  }
+
+  return states[stateName.replace(/\s/g, "")] ?? stateName
+}
+
 async function getFecCandidateId(
   firstName: string,
   lastName: string,
@@ -96,113 +154,176 @@ async function getFecCandidateId(
 ) {
   const office = chamber === "Senate" ? "S" : "H"
 
-  const res = await fetch(
-    `https://api.open.fec.gov/v1/candidates/?state=${state}&office=${office}&per_page=100&api_key=${process.env.FEC_API_KEY}`,
-    { next: { revalidate: 3600 } }
-  )
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  const url = new URL("https://api.open.fec.gov/v1/candidates/search/")
+  url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+  url.searchParams.set("name", lastName)
+  const stateCode = getStateAbbreviation(state)
+  url.searchParams.set("state", stateCode)
+  url.searchParams.set("office", office)
+  url.searchParams.set("cycle", String(cycle))
+  url.searchParams.set("per_page", "10")
+
+  console.log("FEC URL:", url.toString())
+
+  const res = await fetch(url.toString())
+
+  console.log("FEC status:", res.status)
 
   if (!res.ok) {
-    console.log("Candidate lookup error:", res.status)
-    console.log(await res.text())
+    const text = await res.text()
+    console.log("FEC error body:", text)
     return null
   }
 
   const data = await res.json()
 
-  if (!data.results) {
-    console.log("No candidates returned")
-    return null
-  }
+  console.log("FEC results count:", data.results?.length)
 
-  // Filter manually
-  const match = data.results.find((c: any) =>
-    c.name.toUpperCase().includes(lastName.toUpperCase())
-  )
-
-  if (!match) {
-    console.log("No matching candidate found")
-    console.log("Returned names:", data.results.map((c: any) => c.name))
-    return null
-  }
-
-  console.log("Matched:", match.name)
-  console.log("Candidate ID:", match.candidate_id)
-
-  return match.candidate_id
+  return data.results?.[0] ?? null
 }
 
-async function getPacDonations(candidateId: string) {
-  const res = await fetch(
-    `https://api.open.fec.gov/v1/schedules/schedule_a/?candidate_id=${candidateId}&contributor_type=committee&two_year_transaction_period=2024&sort=-contribution_receipt_amount&per_page=20&api_key=${process.env.FEC_API_KEY}`,
-    { next: { revalidate: 300 } }
-  )
+async function getTopPacDonors(
+  committeeIds: string[]
+): Promise<PacDonation[]> {
+  const donors: Record<string, number> = {}
 
-  if (!res.ok) {
-    console.log("FEC error:", res.status)
-    console.log(await res.text())
-    return []
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  for (const committeeId of committeeIds) {
+    let last_index: string | undefined
+    let last_date: string | undefined
+    
+    let pageCount = 0
+
+    while (pageCount < 5) {
+      const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
+      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("committee_id", committeeId)
+      url.searchParams.set("two_year_transaction_period", String(cycle))
+      url.searchParams.set("contributor_type", "committee")
+      url.searchParams.set("per_page", "100")
+      url.searchParams.set("sort", "-contribution_receipt_date")
+
+      if (last_index)
+        url.searchParams.set("last_index", last_index)
+
+      if (last_date)
+        url.searchParams.set("last_contribution_receipt_date", last_date)
+
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        console.log("Schedule A fetch failed")
+        break
+      }
+
+      const data = await res.json()
+      const results = data.results ?? []
+
+      console.log(`Schedule A results for ${committeeId}:`, results.length)
+
+      if (results.length === 0) break
+
+      for (const r of results) {
+        const name = r.contributor_name
+        const amount = r.contribution_receipt_amount ?? 0
+
+        if (!name) continue
+
+        donors[name] = (donors[name] || 0) + amount
+      }
+
+      const li = data.pagination?.last_indexes
+      if (!li?.last_index || li.last_index === last_index) break
+
+      last_index = li.last_index
+      last_date = li.last_contribution_receipt_date
+      pageCount++
+    }
   }
 
-  const data = await res.json()
+  const top = Object.entries(donors)
+    .map(([pacName, amount]) => ({ pacName, amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 10)
 
-  if (!data.results) return []
+  console.log("Top PAC donors:", top)
 
-  return data.results.map((donation: any) => ({
-    pacName: donation.committee_name,
-    amount: donation.contribution_receipt_amount,
-    date: donation.contribution_receipt_date,
-  }))
+  return top
 }
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params 
+  try {
+    const { id } = await context.params
 
-  const res = await fetch(
-    `https://api.congress.gov/v3/member/${id}?format=json`,
-    {
-      headers: {
-        "X-Api-Key": process.env.CONGRESS_API_KEY!,
-      },
+    const res = await fetch(
+      `https://api.congress.gov/v3/member/${id}?format=json`,
+      {
+        headers: {
+          "X-Api-Key": process.env.CONGRESS_API_KEY!,
+        },
+      }
+    )
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: "Congress API error" },
+        { status: 500 }
+      )
     }
-  )
 
-  if (!res.ok) {
-    console.log("Status:", res.status)
-    console.log("Status text:", res.statusText)
-    return NextResponse.json({ error: "Congress API error" }, { status: 500 })
+    const data = await res.json()
+    const rawMember = data.member
+
+    if (!rawMember) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404 }
+      )
+    }
+
+    const formatted = mapCongressMemberToMember(rawMember)
+    const trades = await getCongressTrades(formatted.id)
+
+    const chamber =
+      rawMember.terms?.[rawMember.terms.length - 1]?.chamber
+
+    const candidate = await getFecCandidateId(
+      rawMember.firstName,
+      rawMember.lastName,
+      rawMember.state,
+      chamber
+    )
+
+    let pacDonations: PacDonation[] = []
+
+    if (candidate) {
+      const committees =
+        candidate.principal_committees
+          ?.filter((c: any) => c.designation === "P")
+          .map((c: any) => c.committee_id) ?? []
+
+      console.log("Principal committees:", committees)
+
+      pacDonations = await getTopPacDonors(committees)
+    }
+
+    return NextResponse.json({
+      ...formatted,
+      trades,
+      pacDonations,
+    })
+  } catch (error) {
+    console.log("Route error:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
   }
-
-  const data = await res.json()
-
-  const rawMember = data.member
-
-  if (!rawMember) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
-  }
-
-  const formatted = mapCongressMemberToMember(rawMember)
-  const trades = await getCongressTrades(formatted.id)
-  const chamber = rawMember.terms?.[rawMember.terms.length - 1]?.chamber
-
-  const candidateId = await getFecCandidateId(
-    rawMember.firstName,
-    rawMember.lastName,
-    rawMember.state,
-    chamber
-  )
-
-  let pacDonations = []
-
-  if (candidateId) {
-    pacDonations = await getPacDonations(candidateId)
-  }
-
-  return NextResponse.json({
-    ...formatted,
-    trades,
-    pacDonations,
-  })
 }
