@@ -3,6 +3,7 @@
 import * as React from "react"
 import CongressionalMap from "@/app/components/congressionalMap"
 import type { FeatureCollection, Geometry } from "geojson"
+import type { DistrictMember } from "@/app/components/congressionalMap"
 
 type DistrictFeatureProperties = {
   state?: string
@@ -18,25 +19,41 @@ export default function MapPage() {
     FeatureCollection<Geometry, DistrictFeatureProperties> | null
   >(null)
   const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [memberLoadError, setMemberLoadError] = React.useState<string | null>(null)
+  const [members, setMembers] = React.useState<DistrictMember[]>([])
 
   React.useEffect(() => {
     let cancelled = false
 
-    async function loadDistricts() {
+    async function loadData() {
       try {
-        const response = await fetch("/geo/cd119.geojson")
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`)
+        const [districtResponse, memberResponse] = await Promise.all([
+          fetch("/geo/cd119.geojson"),
+          fetch("/api/house-members", { cache: "no-store" }),
+        ])
+
+        if (!districtResponse.ok) {
+          throw new Error(`Request failed with status ${districtResponse.status}`)
         }
 
-        const data = (await response.json()) as FeatureCollection<
+        const data = (await districtResponse.json()) as FeatureCollection<
           Geometry,
           DistrictFeatureProperties
         >
+        const memberPayload = (await memberResponse.json()) as {
+          members?: DistrictMember[]
+          error?: string
+        }
 
         if (!cancelled) {
           setDistricts(data)
+          setMembers(memberResponse.ok ? (memberPayload.members ?? []) : [])
           setLoadError(null)
+          setMemberLoadError(
+            memberResponse.ok
+              ? null
+              : memberPayload.error ?? "Congress.gov member data is unavailable right now. District boundaries will still load."
+          )
         }
       } catch {
         if (!cancelled) {
@@ -47,7 +64,7 @@ export default function MapPage() {
       }
     }
 
-    loadDistricts()
+    loadData()
 
     return () => {
       cancelled = true
@@ -67,7 +84,13 @@ export default function MapPage() {
           </div>
         ) : null}
 
-        <CongressionalMap districtGeoJson={districts} />
+        {memberLoadError ? (
+          <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700">
+            {memberLoadError}
+          </div>
+        ) : null}
+
+        <CongressionalMap districtGeoJson={districts} members={members} />
       </div>
     </main>
   )

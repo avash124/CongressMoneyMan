@@ -15,6 +15,10 @@ export default async function MemberPage({
     { cache: "no-store" }
   )
 
+  if (!res.ok) {
+    return <div>Member not found</div>
+  }
+
   const data = await res.json()
 
   if (!data.candidate) {

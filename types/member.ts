@@ -7,6 +7,7 @@ export interface Member {
   totalRaised: number
   totalSpent: number
   topIndustries: Industry[]
+  pacDonations: PacDonation[]
 }
 
 export interface Industry{
