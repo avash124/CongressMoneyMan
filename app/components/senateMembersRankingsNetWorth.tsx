@@ -13,7 +13,7 @@ type RankingRow = {
   netWorth: number | null
 }
 
-type HouseRankingsResponse = {
+type SenateRankingsResponse = {
   byNetWorth: RankingRow[]
   byStockHoldings: RankingRow[]
   error?: string
@@ -42,11 +42,6 @@ function getPartyClasses(party: RankingRow["party"]) {
   return "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
 }
 
-function getDistrictLabel(row: RankingRow) {
-  return row.district === "AL"
-    ? `${row.state}-AL`
-    : `${row.state}-${row.district}`
-}
 
 function RankingTable({
   rows,
@@ -73,7 +68,6 @@ function RankingTable({
               <th className="px-4 py-3 font-medium">Rank</th>
               <th className="px-4 py-3 font-medium">Member</th>
               <th className="px-4 py-3 font-medium">Party</th>
-              <th className="px-4 py-3 font-medium">District</th>
               <th className="px-4 py-3 text-right font-medium">Amount</th>
             </tr>
           </thead>
@@ -101,9 +95,6 @@ function RankingTable({
                     {row.party}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {getDistrictLabel(row)}
-                </td>
                 <td className="px-4 py-3 text-right font-semibold text-slate-950">
                   {formatCurrency(row[valueKey])}
                 </td>
@@ -117,7 +108,7 @@ function RankingTable({
 }
 
 export default function HouseMembersRankingsNetWorth() {
-  const [rankings, setRankings] = useState<HouseRankingsResponse | null>(null)
+  const [rankings, setRankings] = useState<SenateRankingsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -125,13 +116,13 @@ export default function HouseMembersRankingsNetWorth() {
 
     async function loadRankings() {
       try {
-        const response = await fetch("/api/house-rankings", {
+        const response = await fetch("/api/senate-rankings", {
           cache: "no-store",
         })
-        const payload = (await response.json()) as HouseRankingsResponse
+        const payload = (await response.json()) as SenateRankingsResponse
 
         if (!response.ok) {
-          throw new Error(payload.error ?? "Failed to load House rankings")
+          throw new Error(payload.error ?? "Failed to load Senate rankings")
         }
 
         if (!ignore) {
@@ -167,7 +158,7 @@ export default function HouseMembersRankingsNetWorth() {
   if (!rankings) {
     return (
       <div className="rounded-3xl border border-slate-200 bg-white px-6 py-10 text-sm text-slate-600 shadow-sm">
-        Loading House rankings...
+        Loading Senate rankings...
       </div>
     )
   }
@@ -176,14 +167,14 @@ export default function HouseMembersRankingsNetWorth() {
     <div className="flex flex-col gap-6">
       <RankingTable
         rows={rankings.byStockHoldings}
-        title="House Members By Stock Holdings"
+        title="Senate Members By Stock Holdings"
         description="Estimated live stock portfolio values"
         valueKey="stockHoldings"
       />
 
       <RankingTable
         rows={rankings.byNetWorth}
-        title="House Members By Net Worth"
+        title=" Senate Members By Net Worth"
         description="Estimated live net worth values"
         valueKey="netWorth"
       />
