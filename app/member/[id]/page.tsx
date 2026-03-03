@@ -1,4 +1,5 @@
 import { Member } from "@/types/member"
+import { headers } from "next/headers"
 import MemberHeader from "@/components/MemberHeader"
 import TopIndustriesCard from "@/components/TopIndustriesCard"
 import PacDonationsSection from "@/components/PACDonationsCard"
@@ -10,9 +11,16 @@ export default async function MemberPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const requestHeaders = await headers()
+  const host = requestHeaders.get("host")
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "http"
+
+  if (!host) {
+    return <div>Member not found</div>
+  }
 
   const res = await fetch(
-    `http://localhost:3000/api/member/${id}`,
+    `${protocol}://${host}/api/member/${id}`,
     { cache: "no-store" }
   )
 
@@ -22,11 +30,11 @@ export default async function MemberPage({
 
   const data = await res.json()
 
-  if (!data.candidate) {
+  if (!data?.id) {
     return <div>Member not found</div>
   }
 
-  const member: Member = await res.json()
+  const member = data as Member
 
   return (
     <div style={{ padding: "2rem" }}>
@@ -46,7 +54,10 @@ export default async function MemberPage({
       </div>
 
       <PacDonationsSection donations={member.pacDonations ?? []} />
-      <CongressTradesCard trades={member.trades ?? []} />
+      <CongressTradesCard
+        memberId={member.id}
+        initialTrades={member.trades ?? []}
+      />
     </div>
   )
 }

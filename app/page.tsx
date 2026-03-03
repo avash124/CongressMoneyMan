@@ -20,7 +20,7 @@ function parseSearch(raw: string): Record<string, string> {
 export default function Home() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [chamber, setChamber] = useState("");
+  const [chamber, setChamber] = useState("House");
   const [stockQuery, setStockQuery] = useState("");
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
