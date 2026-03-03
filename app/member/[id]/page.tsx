@@ -46,18 +46,23 @@ export default async function MemberPage({
           gap: "2rem",
           padding: "3rem",
           background: "#f3f4f6",
-          minHeight: "100vh",
+          borderRadius: "12px",
         }}
       >
         <MemberHeader member={member} />
         <TopIndustriesCard industries={member.topIndustries ?? []} />
       </div>
 
-      <PacDonationsSection donations={member.pacDonations ?? []} />
-      <CongressTradesCard
-        memberId={member.id}
-        initialTrades={member.trades ?? []}
-      />
+      <div style={{ marginTop: "2rem" }}>
+        <PacDonationsSection donations={member.pacDonations ?? []} />
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <CongressTradesCard
+          memberId={member.id}
+          initialTrades={member.trades ?? []}
+        />
+      </div>
     </div>
   )
 }
