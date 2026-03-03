@@ -1,15 +1,45 @@
-interface Trade {
-  ticker: string
-  transactionDate: string
-  transactionType: string
-  amount: string
-}
+"use client"
+
+import { useEffect, useState } from "react"
+import type { Trade } from "@/types/member"
 
 export default function CongressTradesCard({
-  trades,
+  initialTrades,
+  memberId,
 }: {
-  trades: Trade[]
+  initialTrades: Trade[]
+  memberId: string
 }) {
+  const [trades, setTrades] = useState<Trade[]>(initialTrades)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadTrades() {
+      try {
+        const response = await fetch(`/api/member/${memberId}/trades`, {
+          cache: "no-store",
+        })
+        if (!response.ok) {
+          return
+        }
+
+        const payload = (await response.json()) as { trades?: Trade[] }
+        if (!cancelled) {
+          setTrades(payload.trades ?? [])
+        }
+      } catch {
+        // Keep the initial trades if the refresh fails.
+      }
+    }
+
+    loadTrades()
+
+    return () => {
+      cancelled = true
+    }
+  }, [memberId])
+
   return (
     <div
       style={{

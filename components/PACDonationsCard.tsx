@@ -7,6 +7,34 @@ interface PacDonationsCardProps {
 export default function PACDonationsCard({
   donations,
 }: PacDonationsCardProps) {
+  function formatDonationDate(value: string) {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (!match) return value
+
+    const [, year, month, day] = match
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ]
+    const monthIndex = Number(month) - 1
+
+    if (monthIndex < 0 || monthIndex >= monthNames.length) {
+      return value
+    }
+
+    return `${monthNames[monthIndex]} ${Number(day)}, ${year}`
+  }
+
   return (
     <div
       style={{
@@ -55,6 +83,9 @@ export default function PACDonationsCard({
                   }}
                 >
                   ${donation.amount.toLocaleString()}
+                </td>
+                <td style={{ padding: "0.75rem 0", textAlign: "right" }}>
+                  {formatDonationDate(donation.date)}
                 </td>
               </tr>
             ))}
