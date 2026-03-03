@@ -212,7 +212,6 @@ async function fetchCongressPage(apiKey: string, offset: number): Promise<Congre
         detail = `${detail}: ${apiMessage}`
       }
     } catch {
-      // Ignore parse errors and keep the status-based message.
     }
 
     throw new Error(detail)

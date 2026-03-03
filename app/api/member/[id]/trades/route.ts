@@ -1,21 +1,35 @@
 import { NextResponse } from "next/server"
-import type { Trade } from "@/types/member"
+import { Member, PacDonation} from "@/types/member"
 
-type QuiverTradeRecord = {
-  Amount?: number | string
-  BioGuideID?: string
-  Filed?: string
-  Range?: string
-  ReportDate?: string
-  Ticker?: string
-  Trade_Size_USD?: number | string
-  Transaction?: string
-  TransactionDate?: string
-  Traded?: string
-}
 
-function isBioguideId(id: string): boolean {
-  return /^[A-Z]\d{6}$/i.test(id)
+function mapCongressMemberToMember(member: any): Member {
+  const terms = member.terms ?? []
+  const latestTerm = terms[terms.length - 1]
+
+  const chamber = latestTerm.chamber
+
+  const district =
+    chamber === "Senate"
+      ? "Senate"
+      : `District ${member.district}`
+
+  return {
+    id: member.bioguideId,
+    name: `${member.firstName} ${member.lastName}`,
+    party:
+      member.partyName === "Democratic"
+        ? "D"
+        : member.partyName === "Republican"
+        ? "R"
+        : "I",
+    state: member.state,
+    district,
+    totalRaised: 0,
+    totalSpent: 0,
+    topIndustries: [],
+    pacDonations: [],
+    trades: []
+  }
 }
 
 function formatTradeRange(lowerBound: number): string {
@@ -30,11 +44,11 @@ function formatTradeRange(lowerBound: number): string {
     [1000001, 5000000],
     [5000001, 25000000],
     [25000001, 50000000],
-  ] as const
+  ]
 
   for (const [min, max] of ranges) {
     if (lowerBound === min) {
-      return `$${min.toLocaleString()} - $${max.toLocaleString()}`
+      return `$${min.toLocaleString()} – $${max.toLocaleString()}`
     }
   }
 
@@ -45,141 +59,269 @@ function formatTradeRange(lowerBound: number): string {
   return `$${lowerBound.toLocaleString()}`
 }
 
-function formatTradeAmount(value?: number | string, range?: string): string {
-  if (typeof range === "string" && range.trim()) {
-    return range
+async function getCongressTrades(bioguideId: string) {
+  const res = await fetch(
+    `https://api.quiverquant.com/beta/bulk/congresstrading?bioguide_id=${bioguideId}&page_size=20`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.QUIVER_API_KEY!}`,
+        Accept: "application/json",
+        "User-Agent": "CongressMoneyMan/1.0",
+      },
+    }
+  )
+
+  console.log("Quiver status:", res.status)
+
+  if (!res.ok) {
+    console.log(await res.text())
+    return []
   }
 
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (!trimmed) return "Unknown"
-    if (trimmed.includes("$")) return trimmed
+  const data = await res.json()
 
-    const numeric = Number(trimmed)
-    return Number.isFinite(numeric) ? formatTradeRange(numeric) : trimmed
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return formatTradeRange(value)
-  }
-
-  return "Unknown"
+  return data.map((trade: any) => ({
+    ticker: trade.Ticker,
+    transactionType: trade.Transaction,
+    transactionDate: trade.Traded,
+    amount: formatTradeRange(Number(trade.Trade_Size_USD)),
+  }))
 }
 
-async function fetchQuiverTrades(url: string, apiKey: string): Promise<QuiverTradeRecord[]> {
-  const headerVariants: Record<string, string>[] = [
-    { Authorization: `Bearer ${apiKey}` },
-    { Authorization: `Token ${apiKey}` },
-    { "X-Api-Key": apiKey },
-    { apikey: apiKey },
-  ]
+function getStateAbbreviation(stateName: string): string {
+  const states: Record<string, string> = {
+    Alabama: "AL",
+    Alaska: "AK",
+    Arizona: "AZ",
+    Arkansas: "AR",
+    California: "CA",
+    Colorado: "CO",
+    Connecticut: "CT",
+    Delaware: "DE",
+    Florida: "FL",
+    Georgia: "GA",
+    Hawaii: "HI",
+    Idaho: "ID",
+    Illinois: "IL",
+    Indiana: "IN",
+    Iowa: "IA",
+    Kansas: "KS",
+    Kentucky: "KY",
+    Louisiana: "LA",
+    Maine: "ME",
+    Maryland: "MD",
+    Massachusetts: "MA",
+    Michigan: "MI",
+    Minnesota: "MN",
+    Mississippi: "MS",
+    Missouri: "MO",
+    Montana: "MT",
+    Nebraska: "NE",
+    Nevada: "NV",
+    NewHampshire: "NH",
+    NewJersey: "NJ",
+    NewMexico: "NM",
+    NewYork: "NY",
+    NorthCarolina: "NC",
+    NorthDakota: "ND",
+    Ohio: "OH",
+    Oklahoma: "OK",
+    Oregon: "OR",
+    Pennsylvania: "PA",
+    RhodeIsland: "RI",
+    SouthCarolina: "SC",
+    SouthDakota: "SD",
+    Tennessee: "TN",
+    Texas: "TX",
+    Utah: "UT",
+    Vermont: "VT",
+    Virginia: "VA",
+    Washington: "WA",
+    WestVirginia: "WV",
+    Wisconsin: "WI",
+    Wyoming: "WY",
+  }
 
-  for (const header of headerVariants) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          ...header,
-          Accept: "application/json",
-          "User-Agent": "CongressMoneyMan/1.0",
-        },
-        cache: "no-store",
-      })
+  return states[stateName.replace(/\s/g, "")] ?? stateName
+}
 
-      if (!response.ok) {
-        continue
+async function getFecCandidateId(
+  firstName: string,
+  lastName: string,
+  state: string,
+  chamber: string
+) {
+  const office = chamber === "Senate" ? "S" : "H"
+
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  const url = new URL("https://api.open.fec.gov/v1/candidates/search/")
+  url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+  url.searchParams.set("name", lastName)
+  const stateCode = getStateAbbreviation(state)
+  url.searchParams.set("state", stateCode)
+  url.searchParams.set("office", office)
+  url.searchParams.set("cycle", String(cycle))
+  url.searchParams.set("per_page", "10")
+
+  console.log("FEC URL:", url.toString())
+
+  const res = await fetch(url.toString())
+
+  console.log("FEC status:", res.status)
+
+  if (!res.ok) {
+    const text = await res.text()
+    console.log("FEC error body:", text)
+    return null
+  }
+
+  const data = await res.json()
+
+  console.log("FEC results count:", data.results?.length)
+
+  return data.results?.[0] ?? null
+}
+
+async function getTopPacDonors(
+  committeeIds: string[]
+): Promise<PacDonation[]> {
+  const donors: Record<string, number> = {}
+
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  for (const committeeId of committeeIds) {
+    let last_index: string | undefined
+    let last_date: string | undefined
+    
+    let pageCount = 0
+
+    while (pageCount < 5) {
+      const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
+      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("committee_id", committeeId)
+      url.searchParams.set("two_year_transaction_period", String(cycle))
+      url.searchParams.set("contributor_type", "committee")
+      url.searchParams.set("per_page", "100")
+      url.searchParams.set("sort", "-contribution_receipt_date")
+
+      if (last_index)
+        url.searchParams.set("last_index", last_index)
+
+      if (last_date)
+        url.searchParams.set("last_contribution_receipt_date", last_date)
+
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        console.log("Schedule A fetch failed")
+        break
       }
 
-      const payload = (await response.json()) as unknown
+      const data = await res.json()
+      const results = data.results ?? []
 
-      if (Array.isArray(payload)) {
-        return payload as QuiverTradeRecord[]
+      console.log(`Schedule A results for ${committeeId}:`, results.length)
+
+      if (results.length === 0) break
+
+      for (const r of results) {
+        const name = r.contributor_name
+        const amount = r.contribution_receipt_amount ?? 0
+
+        if (!name) continue
+
+        donors[name] = (donors[name] || 0) + amount
       }
 
-      if (
-        payload &&
-        typeof payload === "object" &&
-        "data" in payload &&
-        Array.isArray(payload.data)
-      ) {
-        return payload.data as QuiverTradeRecord[]
-      }
-    } catch {
-      continue
+      const li = data.pagination?.last_indexes
+      if (!li?.last_index || li.last_index === last_index) break
+
+      last_index = li.last_index
+      last_date = li.last_contribution_receipt_date
+      pageCount++
     }
   }
 
-  return []
-}
+  const top = Object.entries(donors)
+    .map(([pacName, amount]) => ({ pacName, amount, date: ""}))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 10)
 
-function normalizeTrades(trades: QuiverTradeRecord[]): Trade[] {
-  return [...trades]
-    .sort((left, right) => {
-      const rightDate =
-        Date.parse(
-          right.TransactionDate ?? right.Traded ?? right.Filed ?? right.ReportDate ?? ""
-        ) || 0
-      const leftDate =
-        Date.parse(
-          left.TransactionDate ?? left.Traded ?? left.Filed ?? left.ReportDate ?? ""
-        ) || 0
-      return rightDate - leftDate
-    })
-    .slice(0, 20)
-    .map((trade) => ({
-      ticker: trade.Ticker ?? "Unknown",
-      transactionType: trade.Transaction ?? "Unknown",
-      transactionDate:
-        trade.TransactionDate ?? trade.Traded ?? trade.Filed ?? trade.ReportDate ?? "Unknown",
-      amount: formatTradeAmount(trade.Trade_Size_USD ?? trade.Amount, trade.Range),
-    }))
-}
+  console.log("Top PAC donors:", top)
 
-async function getTradesForBioguideId(bioguideId: string, apiKey: string): Promise<Trade[]> {
-  const directTrades = await fetchQuiverTrades(
-    `https://api.quiverquant.com/beta/bulk/congresstrading?bioguide_id=${bioguideId}&page_size=100&recent=false`,
-    apiKey
-  )
-
-  if (directTrades.length > 0) {
-    return normalizeTrades(directTrades)
-  }
-
-  const liveTrades = await fetchQuiverTrades(
-    "https://api.quiverquant.com/beta/live/congresstrading?version=V2&page_size=5000&recent=false",
-    apiKey
-  )
-
-  return normalizeTrades(
-    liveTrades.filter(
-      (trade) => (trade.BioGuideID ?? "").toUpperCase() === bioguideId.toUpperCase()
-    )
-  )
+  return top
 }
 
 export async function GET(
-  _request: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params
-
-  if (!isBioguideId(id)) {
-    return NextResponse.json({ trades: [] })
-  }
-
-  const apiKey = process.env.QUIVER_API_KEY
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Missing QUIVER_API_KEY", trades: [] },
-      { status: 500 }
-    )
-  }
-
   try {
-    const trades = await getTradesForBioguideId(id, apiKey)
-    return NextResponse.json({ trades })
-  } catch {
+    const { id } = await context.params
+
+    const res = await fetch(
+      `https://api.congress.gov/v3/member/${id}?format=json`,
+      {
+        headers: {
+          "X-Api-Key": process.env.CONGRESS_API_KEY!,
+        },
+      }
+    )
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: "Congress API error" },
+        { status: 500 }
+      )
+    }
+
+    const data = await res.json()
+    const rawMember = data.member
+
+    if (!rawMember) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404 }
+      )
+    }
+
+    const formatted = mapCongressMemberToMember(rawMember)
+    const trades = await getCongressTrades(formatted.id)
+
+    const chamber =
+      rawMember.terms?.[rawMember.terms.length - 1]?.chamber
+
+    const candidate = await getFecCandidateId(
+      rawMember.firstName,
+      rawMember.lastName,
+      rawMember.state,
+      chamber
+    )
+
+    let pacDonations: PacDonation[] = []
+
+    if (candidate) {
+      const committees =
+        candidate.principal_committees
+          ?.filter((c: any) => c.designation === "P")
+          .map((c: any) => c.committee_id) ?? []
+
+      console.log("Principal committees:", committees)
+
+      pacDonations = await getTopPacDonors(committees)
+    }
+
+    return NextResponse.json({
+      ...formatted,
+      trades,
+      pacDonations,
+    })
+  } catch (error) {
+    console.log("Route error:", error)
     return NextResponse.json(
-      { error: "Failed to fetch trades", trades: [] },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }
