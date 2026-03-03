@@ -56,10 +56,6 @@ export default function PACDonationsCard({
                 >
                   ${donation.amount.toLocaleString()}
                 </td>
-
-                <td style={{ textAlign: "right" }}>
-                  {donation.date}
-                </td>
               </tr>
             ))}
           </tbody>
