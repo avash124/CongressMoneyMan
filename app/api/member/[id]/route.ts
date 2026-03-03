@@ -1,315 +1,301 @@
+// app/api/member/[id]/route.ts
+
 import { NextResponse } from "next/server"
+import { Member, PacDonation} from "@/types/member"
 
-type CongressMemberDetail = {
-  bioguideId?: string
-  name?: string
-  party?: string
-  partyName?: string
-  state?: string
-  district?: string | number | null
-  partyHistory?:
-    | Array<{
-        partyAbbreviation?: string
-        partyName?: string
-      }>
-    | {
-        item?: Array<{
-          partyAbbreviation?: string
-          partyName?: string
-        }>
-      }
-  terms?: Array<{
-    chamber?: string
-    district?: string | number | null
-    endYear?: number
-    memberType?: string
-    startYear?: number
-    stateCode?: string
-    stateName?: string
-  }>
-}
 
-type CongressMemberDetailResponse = {
-  member?: CongressMemberDetail
-  message?: string
-  error?: string
-}
+function mapCongressMemberToMember(member: any): Member {
+  const terms = member.terms ?? []
+  const latestTerm = terms[terms.length - 1]
 
-const STATE_NAME_TO_CODE: Record<string, string> = {
-  Alabama: "AL",
-  Alaska: "AK",
-  Arizona: "AZ",
-  Arkansas: "AR",
-  California: "CA",
-  Colorado: "CO",
-  Connecticut: "CT",
-  Delaware: "DE",
-  "District of Columbia": "DC",
-  Florida: "FL",
-  Georgia: "GA",
-  Hawaii: "HI",
-  Idaho: "ID",
-  Illinois: "IL",
-  Indiana: "IN",
-  Iowa: "IA",
-  Kansas: "KS",
-  Kentucky: "KY",
-  Louisiana: "LA",
-  Maine: "ME",
-  Maryland: "MD",
-  Massachusetts: "MA",
-  Michigan: "MI",
-  Minnesota: "MN",
-  Mississippi: "MS",
-  Missouri: "MO",
-  Montana: "MT",
-  Nebraska: "NE",
-  Nevada: "NV",
-  "New Hampshire": "NH",
-  "New Jersey": "NJ",
-  "New Mexico": "NM",
-  "New York": "NY",
-  "North Carolina": "NC",
-  "North Dakota": "ND",
-  Ohio: "OH",
-  Oklahoma: "OK",
-  Oregon: "OR",
-  Pennsylvania: "PA",
-  "Rhode Island": "RI",
-  "South Carolina": "SC",
-  "South Dakota": "SD",
-  Tennessee: "TN",
-  Texas: "TX",
-  Utah: "UT",
-  Vermont: "VT",
-  Virginia: "VA",
-  Washington: "WA",
-  "West Virginia": "WV",
-  Wisconsin: "WI",
-  Wyoming: "WY",
-  "American Samoa": "AS",
-  Guam: "GU",
-  "Northern Mariana Islands": "MP",
-  "Puerto Rico": "PR",
-  "Virgin Islands": "VI",
-}
-const AT_LARGE_STATE_CODES = new Set([
-  "AK",
-  "AS",
-  "DC",
-  "DE",
-  "GU",
-  "MP",
-  "ND",
-  "PR",
-  "SD",
-  "VI",
-  "VT",
-  "WY",
-])
+  const chamber = latestTerm.chamber
 
-function normalizeDistrict(value?: string | number | null): string {
-  if (value === undefined || value === null) return ""
+  const district =
+    chamber === "Senate"
+      ? "Senate"
+      : `District ${member.district}`
 
-  const raw = String(value).trim().toUpperCase()
-  if (!raw) return ""
-  if (raw === "AL" || raw === "AT LARGE" || raw === "AT-LARGE") return "AL"
-
-  const numeric = Number.parseInt(raw, 10)
-  if (Number.isNaN(numeric)) return raw
-  if (numeric === 0) return "AL"
-
-  return String(numeric)
-}
-
-function getStateCode(state?: string): string {
-  if (!state) return ""
-
-  const normalized = state.trim()
-  if (!normalized) return ""
-  if (normalized.length === 2) return normalized.toUpperCase()
-
-  return STATE_NAME_TO_CODE[normalized] ?? ""
-}
-
-function getPartyCode(party?: string): "D" | "R" | "I" {
-  const normalized = party?.trim().toUpperCase()
-
-  if (
-    normalized === "D" ||
-    normalized === "DEM" ||
-    normalized === "DEMOCRAT" ||
-    normalized === "DEMOCRATIC" ||
-    normalized === "DFL"
-  ) {
-    return "D"
+  return {
+    id: member.bioguideId,
+    name: `${member.firstName} ${member.lastName}`,
+    party:
+      member.partyName === "Democratic"
+        ? "D"
+        : member.partyName === "Republican"
+        ? "R"
+        : "I",
+    state: member.state,
+    district,
+    totalRaised: 0,
+    totalSpent: 0,
+    topIndustries: [],
+    pacDonations: []
   }
-
-  if (
-    normalized === "R" ||
-    normalized === "REP" ||
-    normalized === "REPUBLICAN"
-  ) {
-    return "R"
-  }
-
-  return "I"
 }
 
-function isBioguideId(id: string): boolean {
-  return /^[A-Z]\d{6}$/i.test(id)
-}
+function formatTradeRange(lowerBound: number): string {
+  const ranges = [
+    [1, 1000],
+    [1001, 15000],
+    [15001, 50000],
+    [50001, 100000],
+    [100001, 250000],
+    [250001, 500000],
+    [500001, 1000000],
+    [1000001, 5000000],
+    [5000001, 25000000],
+    [25000001, 50000000],
+  ]
 
-function getCongressParty(member: CongressMemberDetail): string | undefined {
-  if (member.party || member.partyName) {
-    return member.party ?? member.partyName
-  }
-
-  const partyHistory = Array.isArray(member.partyHistory)
-    ? member.partyHistory
-    : member.partyHistory?.item ?? []
-
-  return (
-    partyHistory[0]?.partyAbbreviation ??
-    partyHistory[0]?.partyName ??
-    partyHistory.at(-1)?.partyAbbreviation ??
-    partyHistory.at(-1)?.partyName
-  )
-}
-
-function getCurrentHouseTerm(member: CongressMemberDetail) {
-  return (member.terms ?? []).find(
-    (term) =>
-      !term.endYear &&
-      typeof term.chamber === "string" &&
-      (term.chamber.includes("House") || term.chamber.includes("Representative"))
-  )
-}
-
-async function fetchCongressMember(memberId: string, apiKey: string) {
-  const response = await fetch(
-    `https://api.congress.gov/v3/member/${memberId}?format=json&api_key=${apiKey}`,
-    { cache: "no-store" }
-  )
-
-  if (!response.ok) {
-    let detail = `Congress.gov request failed with status ${response.status}`
-
-    try {
-      const errorBody = (await response.json()) as CongressMemberDetailResponse
-      const apiMessage = errorBody.message ?? errorBody.error
-      if (apiMessage) {
-        detail = `${detail}: ${apiMessage}`
-      }
-    } catch {
-      // Ignore parse errors and keep the status-based message.
+  for (const [min, max] of ranges) {
+    if (lowerBound === min) {
+      return `$${min.toLocaleString()} – $${max.toLocaleString()}`
     }
-
-    throw new Error(detail)
   }
 
-  const data = (await response.json()) as CongressMemberDetailResponse
-  const member = data.member
+  if (lowerBound >= 50000001) {
+    return `$${lowerBound.toLocaleString()}+`
+  }
 
-  const name =
-    member?.directOrderName ??
-    member?.invertedOrderName
+  return `$${lowerBound.toLocaleString()}`
+}
 
-  if (!member || !name) {
+async function getCongressTrades(bioguideId: string) {
+  const res = await fetch(
+    `https://api.quiverquant.com/beta/bulk/congresstrading?bioguide_id=${bioguideId}&page_size=20`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.QUIVER_API_KEY!}`,
+        Accept: "application/json",
+        "User-Agent": "CongressMoneyMan/1.0",
+      },
+    }
+  )
+
+  console.log("Quiver status:", res.status)
+
+  if (!res.ok) {
+    console.log(await res.text())
+    return []
+  }
+
+  const data = await res.json()
+
+  return data.map((trade: any) => ({
+    ticker: trade.Ticker,
+    transactionType: trade.Transaction,
+    transactionDate: trade.Traded,
+    amount: formatTradeRange(Number(trade.Trade_Size_USD)),
+  }))
+}
+
+function getStateAbbreviation(stateName: string): string {
+  const states: Record<string, string> = {
+    Alabama: "AL",
+    Alaska: "AK",
+    Arizona: "AZ",
+    Arkansas: "AR",
+    California: "CA",
+    Colorado: "CO",
+    Connecticut: "CT",
+    Delaware: "DE",
+    Florida: "FL",
+    Georgia: "GA",
+    Hawaii: "HI",
+    Idaho: "ID",
+    Illinois: "IL",
+    Indiana: "IN",
+    Iowa: "IA",
+    Kansas: "KS",
+    Kentucky: "KY",
+    Louisiana: "LA",
+    Maine: "ME",
+    Maryland: "MD",
+    Massachusetts: "MA",
+    Michigan: "MI",
+    Minnesota: "MN",
+    Mississippi: "MS",
+    Missouri: "MO",
+    Montana: "MT",
+    Nebraska: "NE",
+    Nevada: "NV",
+    NewHampshire: "NH",
+    NewJersey: "NJ",
+    NewMexico: "NM",
+    NewYork: "NY",
+    NorthCarolina: "NC",
+    NorthDakota: "ND",
+    Ohio: "OH",
+    Oklahoma: "OK",
+    Oregon: "OR",
+    Pennsylvania: "PA",
+    RhodeIsland: "RI",
+    SouthCarolina: "SC",
+    SouthDakota: "SD",
+    Tennessee: "TN",
+    Texas: "TX",
+    Utah: "UT",
+    Vermont: "VT",
+    Virginia: "VA",
+    Washington: "WA",
+    WestVirginia: "WV",
+    Wisconsin: "WI",
+    Wyoming: "WY",
+  }
+
+  return states[stateName.replace(/\s/g, "")] ?? stateName
+}
+
+async function getFecCandidateId(
+  firstName: string,
+  lastName: string,
+  state: string,
+  chamber: string
+) {
+  const office = chamber === "Senate" ? "S" : "H"
+
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  const url = new URL("https://api.open.fec.gov/v1/candidates/search/")
+  url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+  url.searchParams.set("name", lastName)
+  const stateCode = getStateAbbreviation(state)
+  url.searchParams.set("state", stateCode)
+  url.searchParams.set("office", office)
+  url.searchParams.set("cycle", String(cycle))
+  url.searchParams.set("per_page", "10")
+
+  console.log("FEC URL:", url.toString())
+
+  const res = await fetch(url.toString())
+
+  console.log("FEC status:", res.status)
+
+  if (!res.ok) {
+    const text = await res.text()
+    console.log("FEC error body:", text)
     return null
   }
 
-  const currentHouseTerm = getCurrentHouseTerm(member)
-  const state = getStateCode(
-    currentHouseTerm?.stateCode ??
-    member.state ??
-    currentHouseTerm?.stateName
-  )
-  const district =
-    normalizeDistrict(member.district ?? currentHouseTerm?.district) ||
-    (AT_LARGE_STATE_CODES.has(state) ? "AL" : "")
+  const data = await res.json()
 
-  return {
-    candidate: {
-      id: member.bioguideId ?? memberId,
-      name,
-      party: getPartyCode(getCongressParty(member)),
-      state,
-      district,
-    },
-    totals: null,
+  console.log("FEC results count:", data.results?.length)
+
+  return data.results?.[0] ?? null
+}
+
+async function getTopPacDonors(
+  committeeIds: string[]
+): Promise<PacDonation[]> {
+  const donors: Record<string, number> = {}
+
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  for (const committeeId of committeeIds) {
+    let last_index: string | undefined
+    let last_date: string | undefined
+    
+    let pageCount = 0
+
+    while (pageCount < 5) {
+      const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
+      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("committee_id", committeeId)
+      url.searchParams.set("two_year_transaction_period", String(cycle))
+      url.searchParams.set("contributor_type", "committee")
+      url.searchParams.set("per_page", "100")
+      url.searchParams.set("sort", "-contribution_receipt_date")
+
+      if (last_index)
+        url.searchParams.set("last_index", last_index)
+
+      if (last_date)
+        url.searchParams.set("last_contribution_receipt_date", last_date)
+
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        console.log("Schedule A fetch failed")
+        break
+      }
+
+      const data = await res.json()
+      const results = data.results ?? []
+
+      console.log(`Schedule A results for ${committeeId}:`, results.length)
+
+      if (results.length === 0) break
+
+      for (const r of results) {
+        const name = r.contributor_name
+        const amount = r.contribution_receipt_amount ?? 0
+
+        if (!name) continue
+
+        donors[name] = (donors[name] || 0) + amount
+      }
+
+      const li = data.pagination?.last_indexes
+      if (!li?.last_index || li.last_index === last_index) break
+
+      last_index = li.last_index
+      last_date = li.last_contribution_receipt_date
+      pageCount++
+    }
   }
+
+  const top = Object.entries(donors)
+    .map(([pacName, amount]) => ({ pacName, amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 10)
+
+  console.log("Top PAC donors:", top)
+
+  return top
 }
 
 export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  req: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
-
-  if (isBioguideId(id)) {
-    const congressApiKey =
-      process.env.CONGRESS_API_KEY ??
-      process.env.CONGRESS_GOV_API_KEY
-
-    if (!congressApiKey) {
-      return NextResponse.json(
-        { error: "Missing CONGRESS_API_KEY or CONGRESS_GOV_API_KEY" },
-        { status: 500 }
-      )
-    }
-
-    try {
-      const member = await fetchCongressMember(id, congressApiKey)
-
-      if (!member?.candidate) {
-        return NextResponse.json(
-          { error: "Member not found" },
-          { status: 404 }
-        )
-      }
-
-      return NextResponse.json(member)
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to fetch from Congress.gov"
-
-      return NextResponse.json(
-        { error: message },
-        { status: 500 }
-      )
-    }
-  }
-
-  const apiKey = process.env.FEC_API_KEY
-
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Missing API key" },
-      { status: 500 }
-    )
-  }
-
   try {
     const candidateRes = await fetch(
       `https://api.open.fec.gov/v1/candidates/search/?candidate_id=${id}&api_key=${apiKey}`
     )
 
-    const candidateData = await candidateRes.json()
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: "Congress API error" },
+        { status: 500 }
+      )
+    }
 
     const totalsRes = await fetch(
       `https://api.open.fec.gov/v1/candidate/${id}/totals/?api_key=${apiKey}`
     )
 
-    const totalsData = await totalsRes.json()
+    let pacDonations: PacDonation[] = []
+
+    if (candidate) {
+      const committees =
+        candidate.principal_committees
+          ?.filter((c: any) => c.designation === "P")
+          .map((c: any) => c.committee_id) ?? []
+
+      console.log("Principal committees:", committees)
+
+      pacDonations = await getTopPacDonors(committees)
+    }
 
     return NextResponse.json({
-      candidate: candidateData.results?.[0] ?? null,
-      totals: totalsData.results?.[0] ?? null,
+      ...formatted,
+      trades,
+      pacDonations,
     })
   } catch {
     return NextResponse.json(
-      { error: "Failed to fetch from FEC" },
+      { error: "Internal server error" },
       { status: 500 }
     )
   }

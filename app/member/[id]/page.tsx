@@ -2,6 +2,7 @@ import { Member } from "@/types/member"
 import MemberHeader from "@/components/MemberHeader"
 import TopIndustriesCard from "@/components/TopIndustriesCard"
 import PacDonationsSection from "@/components/PACDonationsCard"
+import CongressTradesCard from "@/components/CongressTradesCard"
 
 export default async function MemberPage({
   params,
@@ -25,17 +26,7 @@ export default async function MemberPage({
     return <div>Member not found</div>
   }
 
-  const member: Member = {
-    id: id,
-    name: data.candidate.name,
-    party: data.candidate.party,
-    state: data.candidate.state,
-    district: data.candidate.district,
-    totalRaised: data.totals?.receipts || 0,
-    totalSpent: data.totals?.disbursements || 0,
-    topIndustries: [],
-    pacDonations: [],
-  }
+  const member: Member = await res.json()
 
   return (
     <div style={{ padding: "2rem" }}>
@@ -45,13 +36,17 @@ export default async function MemberPage({
           justifyContent: "space-between",
           alignItems: "flex-start",
           gap: "2rem",
+          padding: "3rem",
+          background: "#f3f4f6",
+          minHeight: "100vh",
         }}
       >
         <MemberHeader member={member} />
-        <TopIndustriesCard industries={member.topIndustries} />
+        <TopIndustriesCard industries={member.topIndustries ?? []} />
       </div>
 
-      <PacDonationsSection donations={member.pacDonations} />
+      <PacDonationsSection donations={member.pacDonations ?? []} />
+      <CongressTradesCard trades={member.trades ?? []} />
     </div>
   )
 }

@@ -19,3 +19,10 @@ export interface PacDonation {
   pacName: string
   amount: number
 }
+
+export interface Trade {
+  ticker: string
+  transactionDate: string
+  transactionType: string
+  amount: string
+}

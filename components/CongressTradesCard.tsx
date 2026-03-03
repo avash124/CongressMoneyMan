@@ -1,12 +1,15 @@
-import { PacDonation } from "@/types/member"
-
-interface PacDonationsCardProps {
-  donations: PacDonation[]
+interface Trade {
+  ticker: string
+  transactionDate: string
+  transactionType: string
+  amount: string
 }
 
-export default function PACDonationsCard({
-  donations,
-}: PacDonationsCardProps) {
+export default function CongressTradesCard({
+  trades,
+}: {
+  trades: Trade[]
+}) {
   return (
     <div
       style={{
@@ -24,37 +27,35 @@ export default function PACDonationsCard({
           marginBottom: "1.5rem",
         }}
       >
-        Recent PAC Donations
+        Recent Stock Trades
       </h2>
 
-      {donations.length === 0 ? (
+      {trades.length === 0 ? (
         <p style={{ color: "#6b7280" }}>
-          No PAC donation data available.
+          No trading activity available.
         </p>
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left" }}>PAC</th>
+              <th style={{ textAlign: "left" }}>Ticker</th>
+              <th style={{ textAlign: "left" }}>Type</th>
               <th style={{ textAlign: "right" }}>Amount</th>
               <th style={{ textAlign: "right" }}>Date</th>
             </tr>
           </thead>
-
           <tbody>
-            {donations.map((donation, index) => (
+            {trades.map((trade, index) => (
               <tr key={index}>
                 <td style={{ padding: "0.75rem 0" }}>
-                  {donation.pacName}
+                  {trade.ticker}
                 </td>
-
-                <td
-                  style={{
-                    textAlign: "right",
-                    fontWeight: 600,
-                  }}
-                >
-                  ${donation.amount.toLocaleString()}
+                <td>{trade.transactionType}</td>
+                <td style={{ textAlign: "right", fontWeight: 600 }}>
+                  {trade.amount}
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {trade.transactionDate}
                 </td>
               </tr>
             ))}
