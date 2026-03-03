@@ -7,6 +7,8 @@ export interface Member {
   totalRaised: number
   totalSpent: number
   topIndustries: Industry[]
+  pacDonations: PacDonation[]
+  trades?: Trade[]
 }
 
 export interface Industry{
@@ -17,4 +19,12 @@ export interface Industry{
 export interface PacDonation {
   pacName: string
   amount: number
+  date: string
+}
+
+export interface Trade {
+  ticker: string
+  transactionDate: string
+  transactionType: string
+  amount: string
 }
