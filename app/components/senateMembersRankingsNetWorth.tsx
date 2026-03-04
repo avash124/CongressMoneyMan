@@ -8,7 +8,6 @@ type RankingRow = {
   name: string
   party: "D" | "R" | "I"
   state: string
-  district: string
   stockHoldings: number | null
   netWorth: number | null
 }
@@ -27,7 +26,7 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
 })
 
 function formatCurrency(value: number | null) {
-  return value === null ? "—" : currencyFormatter.format(value)
+  return value === null ? "-" : currencyFormatter.format(value)
 }
 
 function getPartyClasses(party: RankingRow["party"]) {
@@ -41,7 +40,6 @@ function getPartyClasses(party: RankingRow["party"]) {
 
   return "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
 }
-
 
 function RankingTable({
   rows,
@@ -68,6 +66,7 @@ function RankingTable({
               <th className="px-4 py-3 font-medium">Rank</th>
               <th className="px-4 py-3 font-medium">Member</th>
               <th className="px-4 py-3 font-medium">Party</th>
+              <th className="px-4 py-3 font-medium">State</th>
               <th className="px-4 py-3 text-right font-medium">Amount</th>
             </tr>
           </thead>
@@ -82,7 +81,7 @@ function RankingTable({
                 </td>
                 <td className="px-4 py-3">
                   <Link
-                    href={`/member/${row.id}`}
+                    href={`/senator/${row.id}`}
                     className="font-semibold text-slate-950 transition hover:text-slate-600"
                   >
                     {row.name}
@@ -95,6 +94,7 @@ function RankingTable({
                     {row.party}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-slate-600">{row.state}</td>
                 <td className="px-4 py-3 text-right font-semibold text-slate-950">
                   {formatCurrency(row[valueKey])}
                 </td>
@@ -174,8 +174,8 @@ export default function SenateMembersRankingsNetWorth() {
 
       <RankingTable
         rows={rankings.byNetWorth}
-        title=" Senate Members By Net Worth"
-        description="Estimated live net worth values"
+        title="Senate Members By Net Worth"
+        description="Estimated live net worths"
         valueKey="netWorth"
       />
     </div>

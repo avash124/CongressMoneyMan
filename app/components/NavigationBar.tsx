@@ -13,7 +13,6 @@ export default function Navbar() {
                 <Link href="/Senate" className="hover:text-gray-300">Senate</Link>
                 <Link href="/map" className="hover:text-gray-300">Map</Link>
                 <Link href="/Trades" className="hover:text-gray-300">Trades</Link>
-                <Link href="/Profile" className="hover:text-gray-300">Profile</Link>
             </nav>
             </div>
         </header>
