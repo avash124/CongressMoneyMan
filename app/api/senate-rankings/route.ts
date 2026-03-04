@@ -51,7 +51,9 @@ function getLiveNetWorth(payload: QuiverTabResponse): number | null {
 }
 
 function getLiveStockHoldings(payload: QuiverTabResponse): number | null {
-  const positions = parseJsonArray(payload.live_stock_portfolio?.live_stock_portfolio)
+  const positions = parseJsonArray(
+    payload.live_stock_portfolio?.live_stock_portfolio
+  )
   let total = 0
   let foundPosition = false
 
@@ -102,7 +104,7 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function getHouseMembers(request: Request): Promise<SenateMember[]> {
+async function getSenateMembers(request: Request): Promise<SenateMember[]> {
   const response = await fetch(new URL("/api/senate-members", request.url), {
     headers: {
       Accept: "application/json",
@@ -111,7 +113,7 @@ async function getHouseMembers(request: Request): Promise<SenateMember[]> {
   })
 
   if (!response.ok) {
-    throw new Error("Failed to load House members")
+    throw new Error("Failed to load Senate members")
   }
 
   const payload = (await response.json()) as SenateMembersResponse
@@ -154,7 +156,7 @@ async function getRankingRow(member: SenateMember): Promise<RankingRow> {
 
 export async function GET(request: Request) {
   try {
-    const members = await getHouseMembers(request)
+    const members = await getSenateMembers(request)
     const rankings = await mapWithConcurrency(members, 12, getRankingRow)
 
     const byStockHoldings = [...rankings].sort((left, right) => {
@@ -181,7 +183,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to build House rankings"
+      error instanceof Error ? error.message : "Failed to build Senate rankings"
 
     return NextResponse.json(
       {
