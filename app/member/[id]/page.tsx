@@ -45,8 +45,6 @@ export default async function MemberPage({
           alignItems: "flex-start",
           gap: "2rem",
           padding: "3rem",
-          background: "#f3f4f6",
-          borderRadius: "12px",
         }}
       >
         <MemberHeader member={member} />

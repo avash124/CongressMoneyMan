@@ -14,33 +14,62 @@ export default function TopIndustriesCard({
   return (
     <div
       style={{
+        background: "white",
+        borderRadius: "16px",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
         padding: "2rem",
-        border: "1px solid #e5e5e5",
-        borderRadius: "12px",
-        width: "320px",
+        minWidth: "320px",
+        height: "fit-content",
       }}
     >
-      <h2 style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
+      <h2
+        style={{
+          fontSize: "1.25rem",
+          fontWeight: 600,
+          marginBottom: "1.5rem",
+        }}
+      >
         Top Supporting Industries
       </h2>
 
-      {topThree.map((industry, index) => (
-        <div
-          key={industry.name}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: "0.75rem",
-          }}
-        >
-          <span>
-            {index + 1}. {industry.name}
-          </span>
-          <span style={{ fontWeight: "600" }}>
-            ${industry.amount.toLocaleString()}
-          </span>
-        </div>
-      ))}
+      {topThree.length === 0 ? (
+        <p style={{ color: "#6b7280" }}>
+          No industry data available.
+        </p>
+      ) : (
+        topThree.map((industry, index) => (
+          <div
+            key={industry.name}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "1rem",
+              paddingBottom: "0.75rem",
+              borderBottom:
+                index !== topThree.length - 1
+                  ? "1px solid #f3f4f6"
+                  : "none",
+            }}
+          >
+            <span
+              style={{
+                color: "#374151",
+              }}
+            >
+              {index + 1}. {industry.name}
+            </span>
+
+            <span
+              style={{
+                fontWeight: 600,
+              }}
+            >
+              ${industry.amount.toLocaleString()}
+            </span>
+          </div>
+        ))
+      )}
     </div>
   )
 }

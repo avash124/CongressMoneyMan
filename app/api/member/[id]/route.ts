@@ -1,5 +1,5 @@
 // app/api/member/[id]/route.ts
-
+import { categorizeIndustry } from "./industryClassifier"
 import { NextResponse } from "next/server"
 import { Member, PacDonation} from "@/types/member"
 
@@ -7,30 +7,34 @@ import { Member, PacDonation} from "@/types/member"
 function mapCongressMemberToMember(member: any): Member {
   const terms = member.terms ?? []
   const latestTerm = terms[terms.length - 1]
-
-  const chamber = latestTerm.chamber
+  const chamber = latestTerm?.chamber
 
   const district =
     chamber === "Senate"
       ? "Senate"
       : `District ${member.district}`
 
+  const partyAbbrev =
+    member.partyHistory?.[0]?.partyAbbreviation ?? ""
+
+  const party =
+    partyAbbrev === "D"
+      ? "D"
+      : partyAbbrev === "R"
+      ? "R"
+      : "I"
+
   return {
     id: member.bioguideId,
     name: `${member.firstName} ${member.lastName}`,
-    party:
-      member.partyName === "Democratic"
-        ? "D"
-        : member.partyName === "Republican"
-        ? "R"
-        : "I",
+    party,
     state: member.state,
     district,
     totalRaised: 0,
     totalSpent: 0,
     topIndustries: [],
     pacDonations: [],
-    trades: []
+    trades: [],
   }
 }
 
@@ -74,11 +78,6 @@ async function getCongressTrades(bioguideId: string) {
   )
 
   console.log("Quiver status:", res.status)
-
-  if (!res.ok) {
-    console.log(await res.text())
-    return []
-  }
 
   const data = await res.json()
 
@@ -175,13 +174,10 @@ async function getFecCandidateId(
 
   if (!res.ok) {
     const text = await res.text()
-    console.log("FEC error body:", text)
     return null
   }
 
   const data = await res.json()
-
-  console.log("FEC results count:", data.results?.length)
 
   return data.results?.[0] ?? null
 }
@@ -224,8 +220,6 @@ async function getTopPacDonors(
       const data = await res.json()
       const results = data.results ?? []
 
-      console.log(`Schedule A results for ${committeeId}:`, results.length)
-
       if (results.length === 0) break
 
       for (const r of results) {
@@ -251,9 +245,97 @@ async function getTopPacDonors(
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 10)
 
-  console.log("Top PAC donors:", top)
-
   return top
+}
+
+async function getFecTotals(candidateId: string) {
+  const res = await fetch(
+    `https://api.open.fec.gov/v1/candidate/${candidateId}/totals/?api_key=${process.env.FEC_API_KEY}`,
+    { cache: "no-store" }
+  )
+
+  console.log("FEC totals status:", res.status)
+
+  if (!res.ok) {
+    const text = await res.text()
+    console.log("FEC totals error:", text)
+    return null
+  }
+
+  const data = await res.json()
+  return data.results?.[0] ?? null
+}
+
+async function getAllPacDonationsForIndustry(
+  committeeIds: string[]
+) {
+  const donors: { pacName: string; amount: number }[] = []
+
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  for (const committeeId of committeeIds) {
+    let last_index: string | undefined
+    let last_date: string | undefined
+    let pageCount = 0
+
+    while (pageCount < 15) {   // 🔥 increase depth here
+      const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
+      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("committee_id", committeeId)
+      url.searchParams.set("two_year_transaction_period", String(cycle))
+      url.searchParams.set("contributor_type", "committee")
+      url.searchParams.set("per_page", "100")
+      url.searchParams.set("sort", "-contribution_receipt_date")
+
+      if (last_index)
+        url.searchParams.set("last_index", last_index)
+
+      if (last_date)
+        url.searchParams.set("last_contribution_receipt_date", last_date)
+
+      const res = await fetch(url.toString())
+      if (!res.ok) break
+
+      const data = await res.json()
+      const results = data.results ?? []
+      if (results.length === 0) break
+
+      for (const r of results) {
+        if (!r.contributor_name) continue
+        donors.push({
+          pacName: r.contributor_name,
+          amount: r.contribution_receipt_amount ?? 0,
+        })
+      }
+
+      const li = data.pagination?.last_indexes
+      if (!li?.last_index || li.last_index === last_index) break
+
+      last_index = li.last_index
+      last_date = li.last_contribution_receipt_date
+      pageCount++
+    }
+  }
+
+  return donors
+}
+
+function computeTopIndustries(
+  donations: { pacName: string; amount: number }[]
+) {
+  const totals: Record<string, number> = {}
+
+  for (const donation of donations) {
+    const industry = categorizeIndustry(donation.pacName)
+    totals[industry] = (totals[industry] || 0) + donation.amount
+  }
+
+  return Object.entries(totals)
+    .filter(([name]) => name !== "Other")
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3)
 }
 
 export async function GET(
@@ -290,35 +372,44 @@ export async function GET(
     }
 
     const formatted = mapCongressMemberToMember(rawMember)
-    const trades = await getCongressTrades(formatted.id)
 
-    const chamber =
-      rawMember.terms?.[rawMember.terms.length - 1]?.chamber
+    const [trades, candidate] = await Promise.all([
+      getCongressTrades(formatted.id),
+      getFecCandidateId(
+        rawMember.firstName,
+        rawMember.lastName,
+        rawMember.state,
+        rawMember.terms?.[rawMember.terms.length - 1]?.chamber
+      )
+    ])
 
-    const candidate = await getFecCandidateId(
-      rawMember.firstName,
-      rawMember.lastName,
-      rawMember.state,
-      chamber
-    )
-
+    let totals = null
     let pacDonations: PacDonation[] = []
+    let allDonations: { pacName: string; amount: number }[] = []
+    let committees: string[] = []
+    let topIndustries: { name: string; amount: number }[] = []
 
-    if (candidate) {
-      const committees =
+    if (candidate?.candidate_id) {
+      totals = await getFecTotals(candidate.candidate_id)
+
+      committees =
         candidate.principal_committees
           ?.filter((c: any) => c.designation === "P")
           .map((c: any) => c.committee_id) ?? []
 
-      console.log("Principal committees:", committees)
-
       pacDonations = await getTopPacDonors(committees)
+
+      allDonations = await getAllPacDonationsForIndustry(committees)
+      topIndustries = computeTopIndustries(allDonations)
     }
 
     return NextResponse.json({
       ...formatted,
+      totalRaised: totals?.receipts ?? 0,
+      totalSpent: totals?.disbursements ?? 0,
       trades,
       pacDonations,
+      topIndustries,
     })
   } catch (error) {
     console.log("Route error:", error)
