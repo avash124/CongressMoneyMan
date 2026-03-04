@@ -10,88 +10,104 @@ export default function CongressTradesCard({
   initialTrades: Trade[]
   memberId: string
 }) {
-  const [trades, setTrades] = useState<Trade[]>(initialTrades)
 
-  useEffect(() => {
+  const [trades,setTrades] = useState<Trade[]>(initialTrades)
+
+  useEffect(()=>{
+
     let cancelled = false
 
-    async function loadTrades() {
-      try {
-        const response = await fetch(`/api/member/${memberId}/trades`, {
-          cache: "no-store",
-        })
-        if (!response.ok) {
-          return
-        }
+    async function loadTrades(){
 
-        const payload = (await response.json()) as { trades?: Trade[] }
-        if (!cancelled) {
+      try{
+
+        const response = await fetch(`/api/member/${memberId}/trades`,{
+          cache:"no-store"
+        })
+
+        if(!response.ok) return
+
+        const payload = await response.json()
+
+        if(!cancelled){
           setTrades(payload.trades ?? [])
         }
-      } catch {
-        // Keep the initial trades if the refresh fails.
-      }
+
+      }catch{}
+
     }
 
     loadTrades()
 
-    return () => {
-      cancelled = true
-    }
-  }, [memberId])
+    return()=>{cancelled=true}
 
-  return (
-    <div
-      style={{
-        marginTop: "2rem",
-        padding: "2rem",
-        background: "white",
-        borderRadius: "16px",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: "1.25rem",
-          fontWeight: 600,
-          marginBottom: "1.5rem",
-        }}
-      >
-        Recent Stock Trades
-      </h2>
+  },[memberId])
 
-      {trades.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>
-          No trading activity available.
-        </p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left" }}>Ticker</th>
-              <th style={{ textAlign: "left" }}>Type</th>
-              <th style={{ textAlign: "right" }}>Amount</th>
-              <th style={{ textAlign: "right" }}>Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((trade, index) => (
-              <tr key={index}>
-                <td style={{ padding: "0.75rem 0" }}>
-                  {trade.ticker}
-                </td>
-                <td>{trade.transactionType}</td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>
-                  {trade.amount}
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  {trade.transactionDate}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+
+  return(
+
+<div className="dashboard-card card-hover p-8 mt-8">
+
+<h2 className="text-xl font-semibold text-gray-900 mb-6">
+Recent Stock Trades
+</h2>
+
+{trades.length === 0 ? (
+
+<p className="text-gray-500">
+No trading activity available.
+</p>
+
+) : (
+
+<table className="min-w-full text-sm">
+
+<thead className="text-xs uppercase text-gray-500 border-b">
+
+<tr>
+<th className="text-left py-3">Ticker</th>
+<th className="text-left py-3">Type</th>
+<th className="text-right py-3">Amount</th>
+<th className="text-right py-3">Date</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+{trades.map((trade,index)=>(
+<tr
+key={index}
+className="border-b border-gray-200 hover:bg-gray-50"
+>
+
+<td className="py-3 font-semibold">
+{trade.ticker}
+</td>
+
+<td className="py-3 text-gray-600">
+{trade.transactionType}
+</td>
+
+<td className="py-3 text-right font-semibold">
+{trade.amount}
+</td>
+
+<td className="py-3 text-right text-gray-600">
+{trade.transactionDate}
+</td>
+
+</tr>
+))}
+
+</tbody>
+
+</table>
+
+)}
+
+</div>
+
   )
+
 }
