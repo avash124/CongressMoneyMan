@@ -5,6 +5,14 @@ interface MemberHeaderProps {
 }
 
 export default function MemberHeader({ member }: MemberHeaderProps) {
+
+  const partyColor =
+    member.party === "D"
+      ? "bg-blue-600"
+      : member.party === "R"
+      ? "bg-red-600"
+      : "bg-gray-500"
+
   const partyLabel =
     member.party === "D"
       ? "Democrat"
@@ -12,100 +20,55 @@ export default function MemberHeader({ member }: MemberHeaderProps) {
       ? "Republican"
       : "Independent"
 
-  const partyColor =
-    member.party === "D"
-      ? "#2563eb"
-      : member.party === "R"
-      ? "#dc2626"
-      : "#6b7280"
-
   const location =
     member.district === "Senate"
       ? `${member.state} • Senate`
       : `${member.state} • ${member.district}`
 
-  return (
-    <div
-      style={{
-        padding: "2.5rem",
-        borderRadius: "16px",
-        background: "white",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-        flex: 1,
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "2.5rem",
-          fontWeight: 700,
-          marginBottom: "0.5rem",
-        }}
-      >
-        {member.name}
-      </h1>
+  return(
 
-      <div
-        style={{
-          display: "inline-block",
-          background: partyColor,
-          color: "white",
-          padding: "6px 14px",
-          borderRadius: "999px",
-          fontWeight: 600,
-          fontSize: "0.9rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        {partyLabel} • {location}
-      </div>
+<div className="dashboard-card p-10 flex flex-col gap-6">
 
-      <div
-        style={{
-          display: "flex",
-          gap: "3rem",
-          marginTop: "1rem",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: "0.9rem",
-              color: "#6b7280",
-              marginBottom: "0.25rem",
-            }}
-          >
-            Total Raised
-          </div>
-          <div
-            style={{
-              fontSize: "2rem",
-              fontWeight: 700,
-            }}
-          >
-            ${member.totalRaised.toLocaleString()}
-          </div>
-        </div>
+<h1 className="text-4xl font-bold text-gray-900">
+{member.name}
+</h1>
 
-        <div>
-          <div
-            style={{
-              fontSize: "0.9rem",
-              color: "#6b7280",
-              marginBottom: "0.25rem",
-            }}
-          >
-            Total Spent
-          </div>
-          <div
-            style={{
-              fontSize: "2rem",
-              fontWeight: 700,
-            }}
-          >
-            ${member.totalSpent.toLocaleString()}
-          </div>
-        </div>
-      </div>
-    </div>
+<div
+className={`inline-flex w-fit px-4 py-1.5 rounded-full text-white text-sm font-semibold ${partyColor}`}
+>
+{partyLabel} • {location}
+</div>
+
+<div className="flex gap-12 pt-4">
+
+<div>
+
+<div className="text-sm text-gray-500 mb-1">
+Total Raised
+</div>
+
+<div className="text-3xl font-bold">
+${member.totalRaised.toLocaleString()}
+</div>
+
+</div>
+
+
+<div>
+
+<div className="text-sm text-gray-500 mb-1">
+Total Spent
+</div>
+
+<div className="text-3xl font-bold">
+${member.totalSpent.toLocaleString()}
+</div>
+
+</div>
+
+</div>
+
+</div>
+
   )
 }

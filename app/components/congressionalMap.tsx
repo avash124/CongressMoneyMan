@@ -364,7 +364,12 @@ export default function CongressionalMap({
   }, [onDistrictSelect, router])
 
   return (
-    <div className={className ?? "relative h-[70vh] min-h-[480px] overflow-hidden rounded-2xl border border-slate-300"}>
+    <div
+    className={
+    className ??
+    "dashboard-card relative h-[70vh] min-h-[480px] overflow-hidden"
+    }
+    >
       {accessToken ? (
         <MapComponent
           ref={mapRef}
