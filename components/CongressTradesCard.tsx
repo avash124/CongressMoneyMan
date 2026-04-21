@@ -1,48 +1,11 @@
-"use client"
-
-import { useEffect, useState } from "react"
 import type { Trade } from "@/types/member"
 
 export default function CongressTradesCard({
-  initialTrades,
-  memberId,
+  initialTrades: trades,
 }: {
   initialTrades: Trade[]
   memberId: string
 }) {
-
-  const [trades,setTrades] = useState<Trade[]>(initialTrades)
-
-  useEffect(()=>{
-
-    let cancelled = false
-
-    async function loadTrades(){
-
-      try{
-
-        const response = await fetch(`/api/member/${memberId}/trades`,{
-          cache:"no-store"
-        })
-
-        if(!response.ok) return
-
-        const payload = await response.json()
-
-        if(!cancelled){
-          setTrades(payload.trades ?? [])
-        }
-
-      }catch{}
-
-    }
-
-    loadTrades()
-
-    return()=>{cancelled=true}
-
-  },[memberId])
-
 
   return(
 

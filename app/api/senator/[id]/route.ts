@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import type { Member, PacDonation, Trade } from "@/types/member"
+import { categorizeIndustry } from "../../member/[id]/industryClassifier"
 
 type CongressTerm = {
   chamber?: string
@@ -14,6 +15,7 @@ type CongressMember = {
   lastName?: string
   party?: string
   partyName?: string
+  partyHistory?: Array<{ partyAbbreviation?: string }>
   state?: string
   terms?: CongressTerm[]
 }
@@ -133,7 +135,9 @@ function mapCongressMemberToResponse(
   return {
     id: member.bioguideId ?? "",
     name: [member.firstName, member.lastName].filter(Boolean).join(" "),
-    party: getPartyCode(member.party ?? member.partyName),
+    party: getPartyCode(
+      member.partyHistory?.[0]?.partyAbbreviation ?? member.party ?? member.partyName
+    ),
     state: getStateCode(
       member.state ?? currentTerm?.stateCode ?? currentTerm?.stateName
     ),
@@ -144,6 +148,83 @@ function mapCongressMemberToResponse(
     pacDonations,
     trades,
   }
+}
+
+async function getFecTotals(candidateId: string) {
+  if (!process.env.FEC_API_KEY) return null
+
+  const response = await fetch(
+    `https://api.open.fec.gov/v1/candidate/${candidateId}/totals/?api_key=${process.env.FEC_API_KEY}`,
+    { cache: "no-store" }
+  )
+
+  if (!response.ok) return null
+
+  const payload = await response.json()
+  return payload.results?.[0] ?? null
+}
+
+async function getAllPacDonationsForIndustry(committeeIds: string[]) {
+  if (!process.env.FEC_API_KEY || committeeIds.length === 0) return []
+
+  const donors: { pacName: string; amount: number }[] = []
+  const year = new Date().getFullYear()
+  const cycle = year % 2 === 0 ? year : year - 1
+
+  for (const committeeId of committeeIds) {
+    let lastIndex: string | undefined
+    let lastDate: string | undefined
+    let pageCount = 0
+
+    while (pageCount < 15) {
+      const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
+      url.searchParams.set("api_key", process.env.FEC_API_KEY)
+      url.searchParams.set("committee_id", committeeId)
+      url.searchParams.set("two_year_transaction_period", String(cycle))
+      url.searchParams.set("contributor_type", "committee")
+      url.searchParams.set("per_page", "100")
+      url.searchParams.set("sort", "-contribution_receipt_date")
+
+      if (lastIndex) url.searchParams.set("last_index", lastIndex)
+      if (lastDate) url.searchParams.set("last_contribution_receipt_date", lastDate)
+
+      const response = await fetch(url.toString(), { cache: "no-store" })
+      if (!response.ok) break
+
+      const payload = await response.json()
+      const results = payload.results ?? []
+      if (results.length === 0) break
+
+      for (const result of results) {
+        if (!result.contributor_name) continue
+        donors.push({ pacName: result.contributor_name, amount: result.contribution_receipt_amount ?? 0 })
+      }
+
+      const li = payload.pagination?.last_indexes
+      if (!li?.last_index || li.last_index === lastIndex) break
+
+      lastIndex = li.last_index
+      lastDate = li.last_contribution_receipt_date
+      pageCount++
+    }
+  }
+
+  return donors
+}
+
+function computeTopIndustries(donations: { pacName: string; amount: number }[]) {
+  const totals: Record<string, number> = {}
+
+  for (const donation of donations) {
+    const industry = categorizeIndustry(donation.pacName)
+    totals[industry] = (totals[industry] ?? 0) + donation.amount
+  }
+
+  return Object.entries(totals)
+    .filter(([name]) => name !== "Other")
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3)
 }
 
 function formatTradeRange(lowerBound: number): string {
@@ -174,19 +255,29 @@ function formatTradeRange(lowerBound: number): string {
 }
 
 async function getCongressTrades(bioguideId: string): Promise<Trade[]> {
+  const apiKey = process.env.QUIVER_API_KEY
+  if (!apiKey) {
+    console.error("[senator/getCongressTrades] QUIVER_API_KEY is not set")
+    return []
+  }
+
   const response = await fetch(
-    `https://api.quiverquant.com/beta/bulk/congresstrading?bioguide_id=${bioguideId}&page_size=20`,
+    "https://api.quiverquant.com/beta/live/congresstrading",
     {
       headers: {
-        Authorization: `Bearer ${process.env.QUIVER_API_KEY ?? ""}`,
+        Authorization: `Bearer ${apiKey}`,
         Accept: "application/json",
         "User-Agent": "CongressMoneyMan/1.0",
       },
-      cache: "no-store",
+      next: { revalidate: 900 },
     }
   )
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    console.error(
+      `[senator/getCongressTrades] Quiver API error ${response.status} for ${bioguideId}: ${body.slice(0, 200)}`
+    )
     return []
   }
 
@@ -194,15 +285,25 @@ async function getCongressTrades(bioguideId: string): Promise<Trade[]> {
     Ticker?: string
     Trade_Size_USD?: number | string
     Traded?: string
+    Date?: string
     Transaction?: string
+    Range?: string
+    Bioguide?: string
   }>
 
-  return payload.map((trade) => ({
-    ticker: trade.Ticker ?? "Unknown",
-    transactionType: trade.Transaction ?? "Unknown",
-    transactionDate: trade.Traded ?? "Unknown",
-    amount: formatTradeRange(Number(trade.Trade_Size_USD)),
-  }))
+  if (!Array.isArray(payload)) {
+    console.error("[senator/getCongressTrades] Unexpected response format")
+    return []
+  }
+
+  return payload
+    .filter((trade) => trade.Bioguide === bioguideId)
+    .map((trade) => ({
+      ticker: trade.Ticker ?? "Unknown",
+      transactionType: trade.Transaction ?? "Unknown",
+      transactionDate: trade.Date ?? trade.Traded ?? "Unknown",
+      amount: trade.Range ?? formatTradeRange(Number(trade.Trade_Size_USD)),
+    }))
 }
 
 async function getSenateCandidate(
@@ -372,11 +473,21 @@ export async function GET(
         .filter((committeeId): committeeId is string => Boolean(committeeId)) ??
       []
 
-    const pacDonations = await getTopPacDonors(committeeIds)
+    const [pacDonations, allDonations, totals] = await Promise.all([
+      getTopPacDonors(committeeIds),
+      getAllPacDonationsForIndustry(committeeIds),
+      candidate ? getFecTotals((candidate as { candidate_id?: string }).candidate_id ?? "") : Promise.resolve(null),
+    ])
 
-    return NextResponse.json(
-      mapCongressMemberToResponse(senator, pacDonations, trades)
-    )
+    const topIndustries = computeTopIndustries(allDonations)
+    const base = mapCongressMemberToResponse(senator, pacDonations, trades)
+
+    return NextResponse.json({
+      ...base,
+      totalRaised: totals?.receipts ?? 0,
+      totalSpent: totals?.disbursements ?? 0,
+      topIndustries,
+    })
   } catch {
     return NextResponse.json(
       { error: "Internal server error" },

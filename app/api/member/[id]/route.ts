@@ -66,27 +66,52 @@ function formatTradeRange(lowerBound: number): string {
 }
 
 async function getCongressTrades(bioguideId: string) {
-  const res = await fetch(
-    `https://api.quiverquant.com/beta/bulk/congresstrading?bioguide_id=${bioguideId}&page_size=20`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.QUIVER_API_KEY!}`,
-        Accept: "application/json",
-        "User-Agent": "CongressMoneyMan/1.0",
-      },
+  try {
+    const apiKey = process.env.QUIVER_API_KEY
+    if (!apiKey) {
+      console.error("[getCongressTrades] QUIVER_API_KEY is not set")
+      return []
     }
-  )
 
-  console.log("Quiver status:", res.status)
+    const res = await fetch(
+      "https://api.quiverquant.com/beta/live/congresstrading",
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+          "User-Agent": "CongressMoneyMan/1.0",
+        },
+        next: { revalidate: 900 },
+      }
+    )
 
-  const data = await res.json()
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      console.error(
+        `[getCongressTrades] Quiver API error ${res.status} for ${bioguideId}: ${body.slice(0, 200)}`
+      )
+      return []
+    }
 
-  return data.map((trade: any) => ({
-    ticker: trade.Ticker,
-    transactionType: trade.Transaction,
-    transactionDate: trade.Traded,
-    amount: formatTradeRange(Number(trade.Trade_Size_USD)),
-  }))
+    const data = await res.json()
+
+    if (!Array.isArray(data)) {
+      console.error("[getCongressTrades] Unexpected response format:", typeof data)
+      return []
+    }
+
+    return data
+      .filter((trade: any) => trade.Bioguide === bioguideId)
+      .map((trade: any) => ({
+        ticker: trade.Ticker ?? "Unknown",
+        transactionType: trade.Transaction ?? "Unknown",
+        transactionDate: trade.Date ?? trade.Traded ?? "Unknown",
+        amount: trade.Range ?? formatTradeRange(Number(trade.Trade_Size_USD)),
+      }))
+  } catch (err) {
+    console.error("[getCongressTrades] Exception:", err)
+    return []
+  }
 }
 
 function getStateAbbreviation(stateName: string): string {
@@ -152,30 +177,27 @@ async function getFecCandidateId(
   state: string,
   chamber: string
 ) {
+  if (!process.env.FEC_API_KEY) return null
+
   const office = chamber === "Senate" ? "S" : "H"
 
   const year = new Date().getFullYear()
   const cycle = year % 2 === 0 ? year : year - 1
 
-  const url = new URL("https://api.open.fec.gov/v1/candidates/search/")
-  url.searchParams.set("api_key", process.env.FEC_API_KEY!)
-  url.searchParams.set("name", lastName)
   const stateCode = getStateAbbreviation(state)
+  if (!stateCode) return null
+
+  const url = new URL("https://api.open.fec.gov/v1/candidates/search/")
+  url.searchParams.set("api_key", process.env.FEC_API_KEY)
+  url.searchParams.set("name", lastName)
   url.searchParams.set("state", stateCode)
   url.searchParams.set("office", office)
   url.searchParams.set("cycle", String(cycle))
   url.searchParams.set("per_page", "10")
 
-  console.log("FEC URL:", url.toString())
-
   const res = await fetch(url.toString())
 
-  console.log("FEC status:", res.status)
-
-  if (!res.ok) {
-    const text = await res.text()
-    return null
-  }
+  if (!res.ok) return null
 
   const data = await res.json()
 
@@ -185,6 +207,8 @@ async function getFecCandidateId(
 async function getTopPacDonors(
   committeeIds: string[]
 ): Promise<PacDonation[]> {
+  if (!process.env.FEC_API_KEY || committeeIds.length === 0) return []
+
   const donors: Record<string, number> = {}
 
   const year = new Date().getFullYear()
@@ -193,12 +217,12 @@ async function getTopPacDonors(
   for (const committeeId of committeeIds) {
     let last_index: string | undefined
     let last_date: string | undefined
-    
+
     let pageCount = 0
 
     while (pageCount < 5) {
       const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
-      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("api_key", process.env.FEC_API_KEY)
       url.searchParams.set("committee_id", committeeId)
       url.searchParams.set("two_year_transaction_period", String(cycle))
       url.searchParams.set("contributor_type", "committee")
@@ -269,6 +293,8 @@ async function getFecTotals(candidateId: string) {
 async function getAllPacDonationsForIndustry(
   committeeIds: string[]
 ) {
+  if (!process.env.FEC_API_KEY || committeeIds.length === 0) return []
+
   const donors: { pacName: string; amount: number }[] = []
 
   const year = new Date().getFullYear()
@@ -279,9 +305,9 @@ async function getAllPacDonationsForIndustry(
     let last_date: string | undefined
     let pageCount = 0
 
-    while (pageCount < 15) {   // 🔥 increase depth here
+    while (pageCount < 15) {
       const url = new URL("https://api.open.fec.gov/v1/schedules/schedule_a/")
-      url.searchParams.set("api_key", process.env.FEC_API_KEY!)
+      url.searchParams.set("api_key", process.env.FEC_API_KEY)
       url.searchParams.set("committee_id", committeeId)
       url.searchParams.set("two_year_transaction_period", String(cycle))
       url.searchParams.set("contributor_type", "committee")
@@ -345,12 +371,23 @@ export async function GET(
   try {
     const { id } = await context.params
 
+    const congressApiKey =
+      process.env.CONGRESS_API_KEY ?? process.env.CONGRESS_GOV_API_KEY
+
+    if (!congressApiKey) {
+      return NextResponse.json(
+        { error: "Missing CONGRESS_API_KEY or CONGRESS_GOV_API_KEY" },
+        { status: 500 }
+      )
+    }
+
     const res = await fetch(
       `https://api.congress.gov/v3/member/${id}?format=json`,
       {
         headers: {
-          "X-Api-Key": process.env.CONGRESS_API_KEY!,
+          "X-Api-Key": congressApiKey,
         },
+        cache: "no-store",
       }
     )
 

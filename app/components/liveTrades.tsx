@@ -145,7 +145,11 @@ className="border-b border-gray-200 hover:bg-gray-50"
 <td className="px-4 py-3">
 
 <Link
-href={`/member/${trade.bioguideId}`}
+href={
+  trade.chamber?.toLowerCase().includes("senate")
+    ? `/senator/${trade.bioguideId}`
+    : `/member/${trade.bioguideId}`
+}
 className="font-semibold text-gray-900 hover:text-blue-600"
 >
 

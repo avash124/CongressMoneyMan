@@ -1,31 +1,19 @@
 import { NextResponse } from "next/server"
 
-type MemberSummary = {
-  id: string
+type QuiverLiveTrade = {
+  Date?: string
+  Ticker?: string
+  Transaction?: string
+  Range?: string
+  ReportDate?: string
+  Representative?: string
+  Party?: string
+  Chamber?: string
+  Bioguide?: string
+  UniqueID?: string | number
+  AssetDescription?: string
+  AssetType?: string
 }
-
-type MembersResponse = {
-  members?: MemberSummary[]
-}
-
-type LiveTradeRow = [
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  string,
-  number | string,
-  string,
-  string,
-  string,
-]
 
 type LiveTrade = {
   amount: string
@@ -42,103 +30,73 @@ type LiveTrade = {
   transactionType: string
 }
 
-async function getIncumbentIds(request: Request): Promise<Set<string>> {
-  const [houseResponse, senateResponse] = await Promise.all([
-    fetch(new URL("/api/house-members", request.url), {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 3600 },
-    }),
-    fetch(new URL("/api/senate-members", request.url), {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 3600 },
-    }),
-  ])
-
-  if (!houseResponse.ok || !senateResponse.ok) {
-    throw new Error("Failed to load incumbent member lists")
-  }
-
-  const [housePayload, senatePayload] = (await Promise.all([
-    houseResponse.json(),
-    senateResponse.json(),
-  ])) as [MembersResponse, MembersResponse]
-
-  return new Set(
-    [...(housePayload.members ?? []), ...(senatePayload.members ?? [])].map(
-      (member) => member.id
-    )
-  )
-}
-
-function parseRecentTradesData(html: string): LiveTradeRow[] {
-  const match = html.match(/let recentTradesData = (\[[\s\S]*?\]);/)
-  if (!match?.[1]) {
-    return []
-  }
-
-  try {
-    return Function(`"use strict"; return (${match[1]});`)() as LiveTradeRow[]
-  } catch {
-    return []
-  }
-}
-
-function normalizeParty(value: string): "D" | "R" | "I" {
-  if (value === "D" || value === "R") {
-    return value
-  }
-
+function normalizeParty(value?: string): "D" | "R" | "I" {
+  const v = value?.trim().toUpperCase() ?? ""
+  if (v === "D" || v.startsWith("DEM")) return "D"
+  if (v === "R" || v.startsWith("REP")) return "R"
   return "I"
 }
 
-function normalizeLiveTrade(row: LiveTradeRow): LiveTrade {
+function mapQuiverTrade(trade: QuiverLiveTrade, index: number): LiveTrade {
   return {
-    amount: row[4],
-    assetName: row[1],
-    assetType: row[2],
-    bioguideId: row[15],
-    chamber: row[6],
-    filedAt: row[8],
-    id: row[11],
-    memberName: row[5],
-    party: normalizeParty(row[7]),
-    ticker: row[0],
-    tradeDate: row[9],
-    transactionType: row[3],
+    amount: trade.Range ?? "",
+    assetName: trade.AssetDescription ?? "",
+    assetType: trade.AssetType ?? "",
+    bioguideId: trade.Bioguide ?? "",
+    chamber: trade.Chamber ?? "",
+    filedAt: trade.ReportDate ?? "",
+    id: String(trade.UniqueID ?? index),
+    memberName: trade.Representative ?? "",
+    party: normalizeParty(trade.Party),
+    ticker: trade.Ticker ?? "-",
+    tradeDate: trade.Date ?? "",
+    transactionType: trade.Transaction ?? "",
   }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const incumbentIds = await getIncumbentIds(request)
-    const response = await fetch("https://www.quiverquant.com/congresstrading/", {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-      },
-      next: { revalidate: 900 },
-    })
-
-    if (!response.ok) {
-      throw new Error("Failed to load live trade data")
+    const apiKey = process.env.QUIVER_API_KEY
+    if (!apiKey) {
+      return NextResponse.json(
+        { trades: [], error: "Missing QUIVER_API_KEY environment variable" },
+        { status: 500 }
+      )
     }
 
-    const html = await response.text()
-    const trades = parseRecentTradesData(html)
-      .filter((row) => incumbentIds.has(row[15]))
-      .map(normalizeLiveTrade)
+    const response = await fetch(
+      "https://api.quiverquant.com/beta/live/congresstrading",
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+          "User-Agent": "CongressMoneyMan/1.0",
+        },
+        next: { revalidate: 900 },
+      }
+    )
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "")
+      throw new Error(
+        `Quiver API error ${response.status}: ${body.slice(0, 200)}`
+      )
+    }
+
+    const data = (await response.json()) as QuiverLiveTrade[]
+
+    if (!Array.isArray(data)) {
+      throw new Error("Unexpected response format from Quiver API")
+    }
+
+    const trades = data
+      .filter((trade) => Boolean(trade.Bioguide))
+      .map(mapQuiverTrade)
       .sort((left, right) => {
         const filedCompare =
-          Date.parse(right.filedAt.replace(" ", "T")) -
-          Date.parse(left.filedAt.replace(" ", "T"))
-
-        if (filedCompare !== 0) {
-          return filedCompare
-        }
-
-        return (
-          Date.parse(right.tradeDate.replace(" ", "T")) -
-          Date.parse(left.tradeDate.replace(" ", "T"))
-        )
+          Date.parse(right.filedAt) - Date.parse(left.filedAt)
+        if (filedCompare !== 0) return filedCompare
+        return Date.parse(right.tradeDate) - Date.parse(left.tradeDate)
       })
 
     return NextResponse.json({
@@ -148,12 +106,9 @@ export async function GET(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to load live trades"
-
+    console.error("[liveTrades]", message)
     return NextResponse.json(
-      {
-        trades: [],
-        error: message,
-      },
+      { trades: [], error: message },
       { status: 500 }
     )
   }

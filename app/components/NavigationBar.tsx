@@ -25,10 +25,6 @@ House
 Senate
 </Link>
 
-<Link href="/map" className="hover:text-blue-600 transition">
-Map
-</Link>
-
 <Link href="/Trades" className="hover:text-blue-600 transition">
 Trades
 </Link>

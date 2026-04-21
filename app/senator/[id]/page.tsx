@@ -44,19 +44,22 @@ export default async function SenatorPage({
           alignItems: "flex-start",
           gap: "2rem",
           padding: "3rem",
-          background: "#f3f4f6",
-          minHeight: "100vh",
         }}
       >
         <MemberHeader member={senator} />
         <TopIndustriesCard industries={senator.topIndustries ?? []} />
       </div>
 
-      <PacDonationsSection donations={senator.pacDonations ?? []} />
-      <CongressTradesCard
-        memberId={senator.id}
-        initialTrades={senator.trades ?? []}
-      />
+      <div style={{ marginTop: "2rem" }}>
+        <PacDonationsSection donations={senator.pacDonations ?? []} />
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <CongressTradesCard
+          memberId={senator.id}
+          initialTrades={senator.trades ?? []}
+        />
+      </div>
     </div>
   )
 }
