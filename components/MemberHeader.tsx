@@ -1,10 +1,14 @@
 import { Member } from "@/types/member"
+import { isNonVotingHouseSeat } from "@/lib/congress"
 
 interface MemberHeaderProps {
   member: Member
 }
 
 export default function MemberHeader({ member }: MemberHeaderProps) {
+
+  const isNonVoting =
+    member.district !== "Senate" && isNonVotingHouseSeat(member.state)
 
   const partyColor =
     member.party === "D"
@@ -38,6 +42,12 @@ className={`inline-flex w-fit px-4 py-1.5 rounded-full text-white text-sm font-s
 >
 {partyLabel} • {location}
 </div>
+
+{isNonVoting && (
+<div className="inline-flex w-fit items-center rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600">
+Non-voting member of the House
+</div>
+)}
 
 <div className="flex gap-12 pt-4">
 

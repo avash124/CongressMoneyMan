@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/refresh-rankings",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/sync-trades",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-members",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/sync-fec",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}

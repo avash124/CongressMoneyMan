@@ -6,16 +6,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "tsx scripts/worker.ts",
+    "diff-members": "tsx scripts/diff-members.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "@upstash/redis": "^1.34.0",
     "mapbox-gl": "^3.19.0",
-    "next": "16.1.6",
+    "next": "^16.2.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-map-gl": "^8.1.0"
   },
   "devDependencies": {
+    "tsx": "^4.19.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

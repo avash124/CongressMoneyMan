@@ -1,19 +1,11 @@
 import { NextResponse } from "next/server"
+import {
+  fetchAllCongressTrades,
+  QuiverCircuitOpenError,
+  type RawCongressTrade,
+} from "@/lib/quiver"
 
-type QuiverLiveTrade = {
-  Date?: string
-  Ticker?: string
-  Transaction?: string
-  Range?: string
-  ReportDate?: string
-  Representative?: string
-  Party?: string
-  Chamber?: string
-  Bioguide?: string
-  UniqueID?: string | number
-  AssetDescription?: string
-  AssetType?: string
-}
+export const revalidate = 900
 
 type LiveTrade = {
   amount: string
@@ -37,7 +29,7 @@ function normalizeParty(value?: string): "D" | "R" | "I" {
   return "I"
 }
 
-function mapQuiverTrade(trade: QuiverLiveTrade, index: number): LiveTrade {
+function mapQuiverTrade(trade: RawCongressTrade, index: number): LiveTrade {
   return {
     amount: trade.Range ?? "",
     assetName: trade.AssetDescription ?? "",
@@ -55,46 +47,23 @@ function mapQuiverTrade(trade: QuiverLiveTrade, index: number): LiveTrade {
 }
 
 export async function GET() {
-  try {
-    const apiKey = process.env.QUIVER_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { trades: [], error: "Missing QUIVER_API_KEY environment variable" },
-        { status: 500 }
-      )
-    }
+  const apiKey = process.env.QUIVER_API_KEY
 
-    const response = await fetch(
-      "https://api.quiverquant.com/beta/live/congresstrading",
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "application/json",
-          "User-Agent": "CongressMoneyMan/1.0",
-        },
-        next: { revalidate: 900 },
-      }
+  if (!apiKey) {
+    return NextResponse.json(
+      { trades: [], error: "Missing QUIVER_API_KEY environment variable" },
+      { status: 500 }
     )
+  }
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "")
-      throw new Error(
-        `Quiver API error ${response.status}: ${body.slice(0, 200)}`
-      )
-    }
-
-    const data = (await response.json()) as QuiverLiveTrade[]
-
-    if (!Array.isArray(data)) {
-      throw new Error("Unexpected response format from Quiver API")
-    }
+  try {
+    const data = await fetchAllCongressTrades(apiKey)
 
     const trades = data
       .filter((trade) => Boolean(trade.Bioguide))
       .map(mapQuiverTrade)
       .sort((left, right) => {
-        const filedCompare =
-          Date.parse(right.filedAt) - Date.parse(left.filedAt)
+        const filedCompare = Date.parse(right.filedAt) - Date.parse(left.filedAt)
         if (filedCompare !== 0) return filedCompare
         return Date.parse(right.tradeDate) - Date.parse(left.tradeDate)
       })
@@ -104,12 +73,16 @@ export async function GET() {
       generatedAt: new Date().toISOString(),
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load live trades"
+    // An open circuit breaker is a transient upstream condition (Quiver is
+    // rate-limiting or down), not a client error — degrade to an empty,
+    // non-error response so the UI shows "temporarily unavailable" instead of a
+    // scary failure banner, and retries naturally on the next load.
+    if (error instanceof QuiverCircuitOpenError) {
+      console.warn("[liveTrades] circuit breaker open — serving empty trades")
+      return NextResponse.json({ trades: [], unavailable: true })
+    }
+    const message = error instanceof Error ? error.message : "Failed to load live trades"
     console.error("[liveTrades]", message)
-    return NextResponse.json(
-      { trades: [], error: message },
-      { status: 500 }
-    )
+    return NextResponse.json({ trades: [], error: message }, { status: 500 })
   }
 }

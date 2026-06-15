@@ -46,7 +46,6 @@ type EnrichedDistrictProperties = DistrictFeatureProperties & {
   memberId?: string
   memberName?: string
   party?: string
-  selected: boolean
 }
 
 type CongressionalMapProps = {
@@ -149,7 +148,7 @@ const districtsFillLayer: LayerProps = {
     ],
     "fill-opacity": [
       "case",
-      ["boolean", ["get", "selected"], false],
+      ["boolean", ["feature-state", "selected"], false],
       0.82,
       ["boolean", ["feature-state", "hover"], false],
       0.68,
@@ -164,13 +163,13 @@ const districtsLineLayer: LayerProps = {
   paint: {
     "line-color": [
       "case",
-      ["boolean", ["get", "selected"], false],
+      ["boolean", ["feature-state", "selected"], false],
       "#0f172a",
       "#334155",
     ],
     "line-width": [
       "case",
-      ["boolean", ["get", "selected"], false],
+      ["boolean", ["feature-state", "selected"], false],
       2,
       ["boolean", ["feature-state", "hover"], false],
       1.4,
@@ -249,6 +248,7 @@ export default function CongressionalMap({
   const router = useRouter()
   const mapRef = React.useRef<MapRef | null>(null)
   const hoveredFeatureIdRef = React.useRef<string | number | null>(null)
+  const selectedFeatureIdRef = React.useRef<string | number | null>(null)
   const [popup, setPopup] = React.useState<PopupState | null>(null)
   const [internalSelectedKey, setInternalSelectedKey] = React.useState<string | null>(null)
 
@@ -289,12 +289,11 @@ export default function CongressionalMap({
             memberId: matchedMember?.id,
             memberName: matchedMember?.name,
             party: matchedMember?.party,
-            selected: districtKey !== "" && districtKey === activeSelectedKey,
           },
         }
       }),
     }
-  }, [activeSelectedKey, districtGeoJson, membersByDistrict])
+  }, [districtGeoJson, membersByDistrict])
 
   const clearHoveredFeature = React.useCallback(() => {
     const hoveredId = hoveredFeatureIdRef.current
@@ -322,6 +321,21 @@ export default function CongressionalMap({
     }
 
     hoveredFeatureIdRef.current = featureId
+  }, [])
+
+  const setSelectedFeature = React.useCallback((featureId: string | number | null) => {
+    const map = mapRef.current?.getMap()
+    const previousId = selectedFeatureIdRef.current
+
+    if (previousId !== null) {
+      map?.setFeatureState({ source: SOURCE_ID, id: previousId }, { selected: false })
+    }
+
+    if (featureId !== null) {
+      map?.setFeatureState({ source: SOURCE_ID, id: featureId }, { selected: true })
+    }
+
+    selectedFeatureIdRef.current = featureId
   }, [])
 
   React.useEffect(() => () => clearHoveredFeature(), [clearHoveredFeature])
@@ -354,14 +368,16 @@ export default function CongressionalMap({
 
     const district = feature.properties
     const districtKey = getDistrictKey(district.state, district.district)
+    const featureId = typeof feature.id === "string" || typeof feature.id === "number" ? feature.id : null
 
     setInternalSelectedKey(districtKey || null)
+    setSelectedFeature(featureId)
     onDistrictSelect?.(district)
 
     if (district.memberId) {
       router.push(`/member/${district.memberId}`)
     }
-  }, [onDistrictSelect, router])
+  }, [onDistrictSelect, router, setSelectedFeature])
 
   return (
     <div
