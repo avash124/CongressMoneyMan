@@ -34,17 +34,16 @@ function getPartyClasses(party: LiveTrade["party"]) {
   return "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
 }
 
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+})
+
 function formatDate(value: string) {
-
   const parsed = Date.parse(value.replace(" ", "T"))
-
   if (Number.isNaN(parsed)) return value
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  }).format(parsed)
+  return dateFormatter.format(parsed)
 }
 
 export default function LiveTrades() {

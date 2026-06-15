@@ -18,13 +18,9 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* reusable dashboard card */
-
 .dashboard-card {
   @apply bg-white border border-gray-200 rounded-2xl shadow-sm;
 }
-
-/* smooth hover */
 
 .card-hover {
   @apply transition hover:shadow-md;

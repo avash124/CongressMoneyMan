@@ -1,0 +1,334 @@
+// Supabase Postgres persistence layer.
+//
+// This sits between the Redis cache and the external APIs: read paths consult it
+// after a Redis miss but before falling through to Congress.gov / Quiver / FEC,
+// and the ETL cron jobs (plus lazy read-miss write-backs) populate it.
+//
+// Like lib/cache.ts, every function degrades gracefully to a no-op / empty result
+// when the Supabase env vars are absent (local dev, preview, or before the project
+// is provisioned) or when the client fails to initialize, so the app behaves
+// identically with or without a database configured. Callers always have an
+// external-API fallback for an empty read.
+//
+// All access is server-side using the service-role key, so Row Level Security can
+// stay on with no policies. Env vars (referenced only — never read .env directly):
+//   SUPABASE_URL
+//   SUPABASE_SERVICE_ROLE_KEY
+
+// --- Row types (shape of each table; consumers map to/from their domain types) ---
+
+export type DbMember = {
+  bioguide_id: string
+  name: string
+  party: "D" | "R" | "I"
+  state: string
+  district: string | null
+  chamber: "house" | "senate"
+}
+
+export type DbTrade = {
+  trade_id: string
+  bioguide_id: string
+  member_name: string | null
+  party: string | null
+  chamber: string | null
+  ticker: string | null
+  asset_name: string | null
+  asset_type: string | null
+  transaction_type: string | null
+  transaction_date: string | null
+  traded: string | null
+  range_text: string | null
+  trade_size_usd: number | null
+  filed_at: string | null
+}
+
+export type DbPortfolio = {
+  bioguide_id: string
+  net_worth: number | null
+  stock_holdings: number | null
+}
+
+export type DbFecCandidate = {
+  bioguide_id: string
+  candidate_id: string | null
+  committee_ids: string[]
+  total_raised: number
+  total_spent: number
+  cycle: number | null
+}
+
+export type DbPacDonation = {
+  bioguide_id: string
+  pac_name: string
+  amount: number
+  cycle: number | null
+}
+
+type PgResult = { data: unknown; error: { message: string } | null }
+
+interface QueryBuilder extends PromiseLike<PgResult> {
+  select(columns?: string): QueryBuilder
+  eq(column: string, value: string | number): QueryBuilder
+  range(from: number, to: number): QueryBuilder
+  upsert(values: unknown, options?: { onConflict?: string }): QueryBuilder
+  insert(values: unknown): QueryBuilder
+  delete(): QueryBuilder
+  in(column: string, values: (string | number)[]): QueryBuilder
+}
+
+type SupabaseLike = { from(table: string): QueryBuilder }
+
+let clientPromise: Promise<SupabaseLike | null> | null = null
+
+async function getDb(): Promise<SupabaseLike | null> {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return null
+  }
+
+  if (!clientPromise) {
+    clientPromise = (async () => {
+      try {
+        const pkg = "@supabase/supabase-js"
+        const mod = (await import(pkg)) as {
+          createClient: (
+            url: string,
+            key: string,
+            opts?: { auth?: { persistSession?: boolean } }
+          ) => SupabaseLike
+        }
+        return mod.createClient(
+          process.env.SUPABASE_URL as string,
+          process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+          { auth: { persistSession: false } }
+        )
+      } catch (error) {
+        console.error("[db] Failed to initialize Supabase client:", error)
+        return null
+      }
+    })()
+  }
+
+  return clientPromise
+}
+
+export function writeBack(task: () => Promise<void>): void {
+  void task().catch((error) => console.error("[db] write-back failed:", error))
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out
+}
+export async function getMembersFromDb(
+  chamber: "house" | "senate"
+): Promise<DbMember[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db.from("members").select("*").eq("chamber", chamber)
+    if (error) {
+      console.error(`[db] getMembersFromDb(${chamber}):`, error.message)
+      return []
+    }
+    return (data as DbMember[]) ?? []
+  } catch (error) {
+    console.error(`[db] getMembersFromDb(${chamber}) threw:`, error)
+    return []
+  }
+}
+
+export async function upsertMembers(rows: DbMember[]): Promise<void> {
+  if (rows.length === 0) return
+  const db = await getDb()
+  if (!db) return
+  const stamped = rows.map((r) => ({ ...r, last_updated: new Date().toISOString() }))
+  try {
+    const { error } = await db.from("members").upsert(stamped, { onConflict: "bioguide_id" })
+    if (error) {
+      console.error("[db] upsertMembers:", error.message)
+      return
+    }
+
+    // Prune members who have left Congress. upsert refreshes/inserts the current
+    // roster but never removes departed members, so without this the table keeps
+    // stale rows (resignations, special-election replacements) forever. `rows`
+    // always holds the full current roster (both chambers), so any row in the
+    // table whose bioguide_id is not in it has left and should be deleted.
+    const currentIds = new Set(rows.map((r) => r.bioguide_id))
+    const { data, error: selError } = await db.from("members").select("bioguide_id")
+    if (selError) {
+      console.error("[db] upsertMembers prune select:", selError.message)
+      return
+    }
+    const stale = ((data as { bioguide_id: string }[]) ?? [])
+      .map((r) => r.bioguide_id)
+      .filter((id) => !currentIds.has(id))
+    if (stale.length > 0) {
+      const { error: delError } = await db.from("members").delete().in("bioguide_id", stale)
+      if (delError) console.error("[db] upsertMembers prune delete:", delError.message)
+    }
+  } catch (error) {
+    console.error("[db] upsertMembers threw:", error)
+  }
+}
+
+export async function getAllTradesFromDb(): Promise<DbTrade[]> {
+  const db = await getDb()
+  if (!db) return []
+  const pageSize = 1000
+  const all: DbTrade[] = []
+  try {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("trades")
+        .select("*")
+        .range(from, from + pageSize - 1)
+      if (error) {
+        console.error("[db] getAllTradesFromDb:", error.message)
+        break
+      }
+      const rows = (data as DbTrade[]) ?? []
+      all.push(...rows)
+      if (rows.length < pageSize) break
+    }
+  } catch (error) {
+    console.error("[db] getAllTradesFromDb threw:", error)
+  }
+  return all
+}
+
+export async function upsertTrades(rows: DbTrade[]): Promise<void> {
+  if (rows.length === 0) return
+  const db = await getDb()
+  if (!db) return
+  // trade_id is synthesized from a filing's fields, so identical filings can
+  // collide within one feed. Collapse duplicates (last wins) so a single upsert
+  // batch never targets the same conflict key twice — Postgres rejects that.
+  const deduped = [...new Map(rows.map((r) => [r.trade_id, r])).values()]
+  try {
+    // Chunk so a large live feed stays under the request payload limit.
+    for (const batch of chunk(deduped, 500)) {
+      const { error } = await db.from("trades").upsert(batch, { onConflict: "trade_id" })
+      if (error) {
+        console.error("[db] upsertTrades:", error.message)
+        return
+      }
+    }
+  } catch (error) {
+    console.error("[db] upsertTrades threw:", error)
+  }
+}
+
+export async function getPortfoliosFromDb(): Promise<DbPortfolio[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db.from("portfolio_data").select("*")
+    if (error) {
+      console.error("[db] getPortfoliosFromDb:", error.message)
+      return []
+    }
+    return (data as DbPortfolio[]) ?? []
+  } catch (error) {
+    console.error("[db] getPortfoliosFromDb threw:", error)
+    return []
+  }
+}
+
+export async function upsertPortfolios(rows: DbPortfolio[]): Promise<void> {
+  if (rows.length === 0) return
+  const db = await getDb()
+  if (!db) return
+  const stamped = rows.map((r) => ({ ...r, fetched_at: new Date().toISOString() }))
+  try {
+    const { error } = await db
+      .from("portfolio_data")
+      .upsert(stamped, { onConflict: "bioguide_id" })
+    if (error) console.error("[db] upsertPortfolios:", error.message)
+  } catch (error) {
+    console.error("[db] upsertPortfolios threw:", error)
+  }
+}
+
+export async function getFecCandidateFromDb(
+  bioguideId: string
+): Promise<DbFecCandidate | null> {
+  const db = await getDb()
+  if (!db) return null
+  try {
+    const { data, error } = await db
+      .from("fec_candidates")
+      .select("*")
+      .eq("bioguide_id", bioguideId)
+    if (error) {
+      console.error(`[db] getFecCandidateFromDb(${bioguideId}):`, error.message)
+      return null
+    }
+    return (data as DbFecCandidate[])?.[0] ?? null
+  } catch (error) {
+    console.error(`[db] getFecCandidateFromDb(${bioguideId}) threw:`, error)
+    return null
+  }
+}
+
+export async function upsertFecCandidate(row: DbFecCandidate): Promise<void> {
+  const db = await getDb()
+  if (!db) return
+  const stamped = { ...row, fetched_at: new Date().toISOString() }
+  try {
+    const { error } = await db
+      .from("fec_candidates")
+      .upsert(stamped, { onConflict: "bioguide_id" })
+    if (error) console.error("[db] upsertFecCandidate:", error.message)
+  } catch (error) {
+    console.error("[db] upsertFecCandidate threw:", error)
+  }
+}
+
+export async function getPacDonationsFromDb(
+  bioguideId: string
+): Promise<DbPacDonation[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db
+      .from("pac_donations")
+      .select("*")
+      .eq("bioguide_id", bioguideId)
+    if (error) {
+      console.error(`[db] getPacDonationsFromDb(${bioguideId}):`, error.message)
+      return []
+    }
+    return (data as DbPacDonation[]) ?? []
+  } catch (error) {
+    console.error(`[db] getPacDonationsFromDb(${bioguideId}) threw:`, error)
+    return []
+  }
+}
+
+export async function replacePacDonations(
+  bioguideId: string,
+  rows: DbPacDonation[]
+): Promise<void> {
+  const db = await getDb()
+  if (!db) return
+  try {
+    const { error: delError } = await db
+      .from("pac_donations")
+      .delete()
+      .eq("bioguide_id", bioguideId)
+    if (delError) {
+      console.error(`[db] replacePacDonations delete(${bioguideId}):`, delError.message)
+      return
+    }
+    if (rows.length === 0) return
+    const { error: insError } = await db.from("pac_donations").insert(rows)
+    if (insError) {
+      console.error(`[db] replacePacDonations insert(${bioguideId}):`, insError.message)
+    }
+  } catch (error) {
+    console.error(`[db] replacePacDonations(${bioguideId}) threw:`, error)
+  }
+}
