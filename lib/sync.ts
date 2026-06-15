@@ -43,6 +43,7 @@ export async function syncMembers(): Promise<{ house: number; senate: number }> 
       state: m.state,
       district: m.district,
       chamber: "house" as const,
+      image_url: m.imageUrl ?? null,
     })),
     ...senate.map((m) => ({
       bioguide_id: m.id,
@@ -51,6 +52,7 @@ export async function syncMembers(): Promise<{ house: number; senate: number }> 
       state: m.state,
       district: null,
       chamber: "senate" as const,
+      image_url: m.imageUrl ?? null,
     })),
   ]
 

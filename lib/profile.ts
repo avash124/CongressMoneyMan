@@ -39,6 +39,7 @@ type RawCongressMember = {
   state?: string
   district?: string | number | null
   terms?: RawTerm[]
+  depiction?: { imageUrl?: string; attribution?: string }
 }
 
 type FecCandidate = {
@@ -106,19 +107,22 @@ function tradeFromDbRow(row: DbTrade): Trade {
   }
 }
 
-// Member profiles show each member's full disclosed history, newest first. The
-// backfilled `trades` table is the source (indexed per member); the live feed —
-// capped at ~1000 recent disclosures across all of Congress — is only a
-// fallback for before the first backfill has run.
+// Member profiles show each member's ten most-recent disclosed trades, newest
+// first. The backfilled `trades` table (Quiver's bulk endpoint) is the source,
+// indexed per member; the live feed — capped at ~1000 recent disclosures across
+// all of Congress — is only a fallback for before the first backfill has run.
+const RECENT_TRADES_LIMIT = 10
+
+const byTradeDateDesc = (a: Trade, b: Trade): number =>
+  (Date.parse(b.transactionDate) || 0) - (Date.parse(a.transactionDate) || 0)
+
 export const loadTrades = cache(async (id: string): Promise<Trade[]> => {
   const rows = await getTradesByBioguide(id)
   if (rows.length > 0) {
     return rows
       .map(tradeFromDbRow)
-      .sort(
-        (a, b) =>
-          (Date.parse(b.transactionDate) || 0) - (Date.parse(a.transactionDate) || 0)
-      )
+      .sort(byTradeDateDesc)
+      .slice(0, RECENT_TRADES_LIMIT)
   }
 
   const apiKey = process.env.QUIVER_API_KEY
@@ -134,6 +138,8 @@ export const loadTrades = cache(async (id: string): Promise<Trade[]> => {
         transactionDate: trade.Date ?? trade.Traded ?? "Unknown",
         amount: trade.Range ?? formatTradeRange(Number(trade.Trade_Size_USD)),
       }))
+      .sort(byTradeDateDesc)
+      .slice(0, RECENT_TRADES_LIMIT)
   } catch {
     return []
   }
@@ -256,6 +262,7 @@ export const loadMemberBase = cache(async (id: string): Promise<Member | null> =
     party: getPartyCode(member.partyHistory?.[0]?.partyAbbreviation),
     state: member.state ?? "",
     district,
+    imageUrl: member.depiction?.imageUrl,
     totalRaised: 0,
     totalSpent: 0,
     topIndustries: [],
@@ -360,6 +367,7 @@ export const loadSenatorBase = cache(async (id: string): Promise<Member | null> 
       senator.state ?? currentTerm?.stateCode ?? currentTerm?.stateName
     ),
     district: "Senate",
+    imageUrl: senator.depiction?.imageUrl,
     totalRaised: 0,
     totalSpent: 0,
     topIndustries: [],

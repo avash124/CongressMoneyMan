@@ -62,12 +62,20 @@ function formatAssetType(value: string) {
   return ASSET_TYPE_LABELS[key] ?? key
 }
 
+// Poll the feed so newly-synced disclosures appear without a page reload. The
+// trades cron refreshes the source every 15 min; a 60s client poll picks those
+// up shortly after, while each request just reads the warm Redis/DB cache.
+const REFRESH_INTERVAL_MS = 60_000
+
 export default function LiveTrades() {
 
   const [trades,setTrades] = useState<LiveTrade[] | null>(null)
   const [error,setError] = useState<string | null>(null)
 
   useEffect(()=>{
+
+    let active = true
+    let loaded = false
 
     async function loadTrades(){
 
@@ -78,16 +86,27 @@ export default function LiveTrades() {
 
         if(!response.ok) throw new Error(payload.error)
 
+        if(!active) return
+        loaded = true
         setTrades(payload.trades)
+        setError(null)
 
       }
       catch(err:any){
-        setError(err.message)
+        // Once trades are on screen, swallow transient refresh failures so a
+        // single blip doesn't replace the table with an error banner.
+        if(active && !loaded) setError(err.message)
       }
 
     }
 
     loadTrades()
+    const interval = setInterval(loadTrades, REFRESH_INTERVAL_MS)
+
+    return ()=>{
+      active = false
+      clearInterval(interval)
+    }
 
   },[])
 

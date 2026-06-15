@@ -4,6 +4,7 @@ export interface Member {
   party: "D" | "R" | "I"
   state: string
   district: string
+  imageUrl?: string
   totalRaised: number
   totalSpent: number
   topIndustries: Industry[]
