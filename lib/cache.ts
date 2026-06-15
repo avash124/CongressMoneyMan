@@ -1,14 +1,3 @@
-// Thin Upstash Redis cache wrapper.
-//
-// Every function degrades gracefully to a no-op when the Upstash env vars are
-// absent (local dev, preview, or before the service is provisioned) or when the
-// client fails to initialize, so the app behaves identically with or without
-// Redis configured. Callers must always handle a `null` cache miss anyway.
-//
-// Env vars (referenced only — never read .env directly):
-//   UPSTASH_REDIS_REST_URL
-//   UPSTASH_REDIS_REST_TOKEN
-
 type RedisLike = {
   get: (key: string) => Promise<unknown>
   set: (key: string, value: unknown, opts?: { ex?: number }) => Promise<unknown>
@@ -29,9 +18,6 @@ async function getClient(): Promise<RedisLike | null> {
   if (!clientPromise) {
     clientPromise = (async () => {
       try {
-        // Non-literal specifier keeps this an optional runtime dependency: the
-        // build/typecheck does not require `@upstash/redis` to be installed, and
-        // it is only imported when the env vars above are present.
         const pkg = "@upstash/redis"
         const mod = (await import(pkg)) as {
           Redis: new (cfg: { url: string; token: string }) => RedisLike
@@ -78,9 +64,6 @@ export async function setCache<T>(
     console.error(`[cache] set failed for "${key}":`, error)
   }
 }
-
-// Atomic counter with a TTL applied on first increment — used by the Quiver
-// circuit breaker to count failures inside a rolling window.
 export async function incrementCache(
   key: string,
   ttlSeconds: number

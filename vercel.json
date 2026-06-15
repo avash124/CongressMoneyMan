@@ -9,6 +9,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/backfill-trades",
+      "schedule": "30 5 * * *"
+    },
+    {
       "path": "/api/cron/sync-members",
       "schedule": "0 6 * * *"
     },

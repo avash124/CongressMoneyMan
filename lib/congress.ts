@@ -112,10 +112,6 @@ export function getStateCode(state?: string): string {
   if (normalized.length === 2) return normalized.toUpperCase()
   return STATE_NAME_TO_CODE[normalized] ?? ""
 }
-
-// True for the six non-voting House seats (the territorial delegates plus Puerto
-// Rico's resident commissioner). Accepts either a full state name or a 2-letter
-// code, so callers don't have to normalize first.
 export function isNonVotingHouseSeat(state?: string): boolean {
   return NON_VOTING_HOUSE_STATES.has(getStateCode(state))
 }

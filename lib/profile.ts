@@ -14,10 +14,12 @@ import { fetchPacDonations, fetchFecTotals, computeTopIndustries } from "./fec"
 import {
   getFecCandidateFromDb,
   getPacDonationsFromDb,
+  getTradesByBioguide,
   upsertFecCandidate,
   replacePacDonations,
   writeBack,
   type DbPacDonation,
+  type DbTrade,
 } from "./db"
 
 type RawTerm = {
@@ -93,17 +95,40 @@ const fetchRawMember = cache(async (id: string): Promise<RawCongressMember | nul
   return data.member ?? null
 })
 
-// Trades are filtered from the single shared live-trades feed (identical logic
-// for House and Senate).
+function tradeFromDbRow(row: DbTrade): Trade {
+  return {
+    id: row.trade_id,
+    ticker: row.ticker ?? "Unknown",
+    transactionType: row.transaction_type ?? "Unknown",
+    transactionDate: row.transaction_date ?? row.traded ?? "Unknown",
+    // Bulk-history rows carry only the numeric amount, not a formatted range.
+    amount: row.range_text ?? formatTradeRange(Number(row.trade_size_usd ?? 0)),
+  }
+}
+
+// Member profiles show each member's full disclosed history, newest first. The
+// backfilled `trades` table is the source (indexed per member); the live feed —
+// capped at ~1000 recent disclosures across all of Congress — is only a
+// fallback for before the first backfill has run.
 export const loadTrades = cache(async (id: string): Promise<Trade[]> => {
+  const rows = await getTradesByBioguide(id)
+  if (rows.length > 0) {
+    return rows
+      .map(tradeFromDbRow)
+      .sort(
+        (a, b) =>
+          (Date.parse(b.transactionDate) || 0) - (Date.parse(a.transactionDate) || 0)
+      )
+  }
+
   const apiKey = process.env.QUIVER_API_KEY
   if (!apiKey) return []
-
   try {
     const allTrades = await fetchAllCongressTrades(apiKey)
     return allTrades
       .filter((trade) => trade.Bioguide === id)
       .map((trade) => ({
+        id: String(trade.UniqueID ?? ""),
         ticker: trade.Ticker ?? "Unknown",
         transactionType: trade.Transaction ?? "Unknown",
         transactionDate: trade.Date ?? trade.Traded ?? "Unknown",
@@ -282,8 +307,6 @@ export async function resolveFecCandidate(
   return { candidateId: candidate.candidate_id, committeeIds: principalCommittees(candidate) }
 }
 
-// Resolve the FEC candidate once per request; the totals (header) and donations
-// (cards) loaders reuse this cached result on a DB miss.
 const resolveMemberCandidate = cache(async (id: string): Promise<FecCandidateRef | null> => {
   const member = await fetchRawMember(id)
   if (!member) return null
@@ -298,14 +321,10 @@ const resolveMemberCandidate = cache(async (id: string): Promise<FecCandidateRef
   })
 })
 
-// Cheap: one FEC totals request (DB-first). Lets the header render without waiting
-// on the slow PAC-donation pagination below.
 export const loadMemberFecTotals = cache((id: string): Promise<FecTotalsResult> =>
   loadFecTotals(id, () => resolveMemberCandidate(id))
 )
 
-// Slow: up to 15 sequential FEC pages per committee (DB-first). Streams into the
-// industries and PAC cards independently of the header.
 export const loadMemberFecDonations = cache((id: string): Promise<FecDonationsResult> =>
   loadFecDonations(id, () => resolveMemberCandidate(id))
 )
@@ -317,10 +336,6 @@ export const loadMemberFec = cache(async (id: string): Promise<FecResult> => {
   ])
   return { ...totals, ...donations }
 })
-
-// ---------------------------------------------------------------------------
-// Senator
-// ---------------------------------------------------------------------------
 
 function getCurrentSenateTerm(member: RawCongressMember): RawTerm | null {
   return (
@@ -385,9 +400,6 @@ export const loadSenatorFec = cache(async (id: string): Promise<FecResult> => {
   return { ...totals, ...donations }
 })
 
-// ---------------------------------------------------------------------------
-// Full-profile aggregations (used by the JSON API routes)
-// ---------------------------------------------------------------------------
 
 export async function loadMemberProfile(id: string): Promise<Member | null> {
   const [base, fec, trades] = await Promise.all([

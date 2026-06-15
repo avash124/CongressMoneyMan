@@ -10,9 +10,6 @@ export type FecDonations = {
   allDonations: { pacName: string; amount: number }[]
 }
 
-// Single pagination pass that returns both top donors and all donations for industry classification.
-// Replaces the prior pattern of calling getTopPacDonors (5 pages) + getAllPacDonationsForIndustry (15 pages)
-// against the same endpoint for the same committees — which was fetching the same data twice.
 export async function fetchPacDonations(
   committeeIds: string[],
   apiKey: string,
@@ -71,8 +68,6 @@ export async function fetchPacDonations(
       pageCount++
     }
   }
-
-  // Aggregate totals per donor from the single pass
   const donorTotals: Record<string, number> = {}
   for (const { pacName, amount } of allDonations) {
     donorTotals[pacName] = (donorTotals[pacName] ?? 0) + amount

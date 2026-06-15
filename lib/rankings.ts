@@ -14,23 +14,9 @@ import { getPortfoliosFromDb, upsertPortfolios, writeBack, type DbPortfolio } fr
 
 export const HOUSE_RANKINGS_KEY = "house-rankings"
 export const SENATE_RANKINGS_KEY = "senate-rankings"
-
-// Cache lives for 2 hours; the cron job refreshes every 90 minutes so the entry
-// never expires between runs.
 export const RANKINGS_TTL_SECONDS = 2 * 60 * 60
-
-// Quiver's per-politician endpoint rate-limits aggressively (429 on the first
-// concurrent burst), so the fan-out is deliberately slow: a couple of requests at
-// a time, well spaced out. A refresh that only gets part-way is fine —
-// mergeWithPrevious keeps prior values and each run accumulates more (see
-// persistRankings).
 const FANOUT_CONCURRENCY = 2
 const FANOUT_DELAY_MS = 750
-
-// If the shared circuit breaker opens mid-fan-out (too many 429s), pause for the
-// breaker window (~60s) and retry the same member instead of giving up — so one
-// trip doesn't blank the rest of the run. Bounded so a persistently-open breaker
-// still terminates the run.
 const CIRCUIT_OPEN_PAUSE_MS = 65_000
 const MAX_CIRCUIT_WAITS = 3
 
@@ -121,11 +107,6 @@ export async function mapWithConcurrency<T, R>(
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
   return results
 }
-
-// In-memory single-flight: collapse concurrent callers asking for the same key
-// into one shared computation. Stops the cache stampede where two requests (e.g.
-// React Strict Mode's double-invoked effect) both miss the cache and each launch
-// a full fan-out, doubling the load on Quiver.
 const inFlight = new Map<string, Promise<unknown>>()
 
 function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
@@ -159,8 +140,6 @@ async function getRankingRow<M extends { id: string; name: string }>(
         stockHoldings: getLiveStockHoldings(payload),
       }
     } catch (error) {
-      // An open breaker is transient (a burst of 429s elsewhere in the fan-out):
-      // wait out the window and retry this member so the run keeps making progress.
       if (error instanceof QuiverCircuitOpenError && waits < MAX_CIRCUIT_WAITS) {
         console.warn(
           `[rankings] circuit open — pausing ${CIRCUIT_OPEN_PAUSE_MS / 1000}s before retrying ${member.id}`
@@ -168,8 +147,6 @@ async function getRankingRow<M extends { id: string; name: string }>(
         await sleep(CIRCUIT_OPEN_PAUSE_MS)
         continue
       }
-      // Any other failure (or breaker still open after the max waits) fails soft to
-      // null so one member never blanks the whole table.
       console.warn(
         `[rankings] ${member.id} fan-out failed:`,
         error instanceof Error ? error.message : error

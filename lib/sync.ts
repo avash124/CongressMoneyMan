@@ -1,17 +1,9 @@
-// Shared ETL sync routines: fetch from the upstream APIs and write to Postgres.
-//
-// These are plain async functions with no Next.js / React dependencies, so the
-// same code runs from two drivers:
-//   1. The `/api/cron/*` route handlers (Vercel Cron, in production).
-//   2. The standalone background worker (`npm run worker`) — a long-running
-//      process that runs them on a timer, locally or on any always-on host.
-//
-// The upstream APIs (Congress.gov, Quiver, FEC) do not push events, so freshness
-// is bounded by how often these poll. Each is idempotent (upsert/replace), so
-// re-running only ever refreshes rows.
-
 import { fetchHouseMembers, fetchSenateMembers, getStateCode } from "./congress"
-import { fetchAllCongressTrades, tradeToDbRow } from "./quiver"
+import {
+  fetchAllCongressTrades,
+  fetchBulkCongressTrades,
+  tradeToDbRow,
+} from "./quiver"
 import { fetchFecTotals, fetchPacDonations } from "./fec"
 import { resolveFecCandidate, currentCycle, aggregateDonors } from "./profile"
 import { refreshAllRankings, mapWithConcurrency } from "./rankings"
@@ -31,8 +23,6 @@ function resolveCongressApiKey(): string {
   return apiKey
 }
 
-// fetchHouseMembers / fetchSenateMembers expose the Congress list-format name
-// ("Last, First"); FEC search keys mostly on last name + state + office.
 function lastName(listName: string): string {
   return listName.split(",")[0]?.trim() || listName
 }
@@ -68,7 +58,6 @@ export async function syncMembers(): Promise<{ house: number; senate: number }> 
   return { house: house.length, senate: senate.length }
 }
 
-// Pull a fresh live-trades feed straight from Quiver and persist it.
 export async function syncTrades(): Promise<{ fetched: number; persisted: number }> {
   const apiKey = process.env.QUIVER_API_KEY
   if (!apiKey) throw new Error("Missing QUIVER_API_KEY")
@@ -82,20 +71,33 @@ export async function syncTrades(): Promise<{ fetched: number; persisted: number
   return { fetched: trades.length, persisted: rows.length }
 }
 
-// Run the net-worth / stock-holdings fan-out. refreshHouseRankings /
-// refreshSenateRankings already warm Redis and write `portfolio_data`
-// (persistRankings -> upsertPortfolios), so this one job feeds both.
+// Full multi-year history (Quiver's bulk endpoint, ~2020→present). Upsert-only
+// and idempotent — unified trade ids mean these rows merge with the 15-minute
+// live sync instead of duplicating. Run on a slow cadence (daily); the live
+// `syncTrades` keeps the most-recent disclosures fresh between runs.
+export async function backfillTrades(): Promise<{
+  fetched: number
+  persisted: number
+}> {
+  const apiKey = process.env.QUIVER_API_KEY
+  if (!apiKey) throw new Error("Missing QUIVER_API_KEY")
+
+  const trades = await fetchBulkCongressTrades(apiKey)
+  const rows = trades
+    .map(tradeToDbRow)
+    .filter((row): row is DbTrade => row !== null)
+
+  await upsertTrades(rows)
+  return { fetched: trades.length, persisted: rows.length }
+}
+
 export async function syncRankings(): Promise<{ house: number; senate: number }> {
   const apiKey = resolveCongressApiKey()
   const { house, senate } = await refreshAllRankings(apiKey)
   return { house: house.byNetWorth.length, senate: senate.byNetWorth.length }
 }
-
 const FEC_CONCURRENCY = 4
 const FEC_DELAY_MS = 150
-
-// For every member: resolve their FEC candidate, then persist headline totals
-// (fec_candidates) and per-donor PAC aggregates (pac_donations).
 export async function syncFec(): Promise<{ members: number; resolved: number }> {
   const apiKey = resolveCongressApiKey()
   const fecKey = process.env.FEC_API_KEY

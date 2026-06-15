@@ -1,3 +1,4 @@
+import Link from "next/link"
 import type { Trade } from "@/types/member"
 
 export default function CongressTradesCard({
@@ -45,7 +46,16 @@ className="border-b border-gray-200 hover:bg-gray-50"
 >
 
 <td className="py-3 font-semibold">
-{trade.ticker}
+{trade.id ? (
+  <Link
+    href={`/trade/${encodeURIComponent(trade.id)}`}
+    className="text-blue-600 hover:underline"
+  >
+    {trade.ticker}
+  </Link>
+) : (
+  trade.ticker
+)}
 </td>
 
 <td className="py-3 text-gray-600">
