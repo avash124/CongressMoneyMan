@@ -1,22 +1,3 @@
-// Supabase Postgres persistence layer.
-//
-// This sits between the Redis cache and the external APIs: read paths consult it
-// after a Redis miss but before falling through to Congress.gov / Quiver / FEC,
-// and the ETL cron jobs (plus lazy read-miss write-backs) populate it.
-//
-// Like lib/cache.ts, every function degrades gracefully to a no-op / empty result
-// when the Supabase env vars are absent (local dev, preview, or before the project
-// is provisioned) or when the client fails to initialize, so the app behaves
-// identically with or without a database configured. Callers always have an
-// external-API fallback for an empty read.
-//
-// All access is server-side using the service-role key, so Row Level Security can
-// stay on with no policies. Env vars (referenced only — never read .env directly):
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_ROLE_KEY
-
-// --- Row types (shape of each table; consumers map to/from their domain types) ---
-
 export type DbMember = {
   bioguide_id: string
   name: string
@@ -70,7 +51,13 @@ type PgResult = { data: unknown; error: { message: string } | null }
 interface QueryBuilder extends PromiseLike<PgResult> {
   select(columns?: string): QueryBuilder
   eq(column: string, value: string | number): QueryBuilder
+  neq(column: string, value: string | number): QueryBuilder
   range(from: number, to: number): QueryBuilder
+  order(
+    column: string,
+    options?: { ascending?: boolean; nullsFirst?: boolean }
+  ): QueryBuilder
+  limit(count: number): QueryBuilder
   upsert(values: unknown, options?: { onConflict?: string }): QueryBuilder
   insert(values: unknown): QueryBuilder
   delete(): QueryBuilder
@@ -150,12 +137,6 @@ export async function upsertMembers(rows: DbMember[]): Promise<void> {
       console.error("[db] upsertMembers:", error.message)
       return
     }
-
-    // Prune members who have left Congress. upsert refreshes/inserts the current
-    // roster but never removes departed members, so without this the table keeps
-    // stale rows (resignations, special-election replacements) forever. `rows`
-    // always holds the full current roster (both chambers), so any row in the
-    // table whose bioguide_id is not in it has left and should be deleted.
     const currentIds = new Set(rows.map((r) => r.bioguide_id))
     const { data, error: selError } = await db.from("members").select("bioguide_id")
     if (selError) {
@@ -174,7 +155,31 @@ export async function upsertMembers(rows: DbMember[]): Promise<void> {
   }
 }
 
-export async function getAllTradesFromDb(): Promise<DbTrade[]> {
+// The most-recently-filed slice, for the live-trades page. Bounded so the full
+// multi-year backfill in this table never loads whole into the live UI / cache.
+export async function getRecentTradesFromDb(limit = 1000): Promise<DbTrade[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db
+      .from("trades")
+      .select("*")
+      .order("filed_at", { ascending: false, nullsFirst: false })
+      .limit(limit)
+    if (error) {
+      console.error("[db] getRecentTradesFromDb:", error.message)
+      return []
+    }
+    return (data as DbTrade[]) ?? []
+  } catch (error) {
+    console.error("[db] getRecentTradesFromDb threw:", error)
+    return []
+  }
+}
+
+// One member's complete trade history (indexed on bioguide_id). Paginated
+// because heavy traders can exceed the 1000-row PostgREST cap.
+export async function getTradesByBioguide(bioguideId: string): Promise<DbTrade[]> {
   const db = await getDb()
   if (!db) return []
   const pageSize = 1000
@@ -184,9 +189,10 @@ export async function getAllTradesFromDb(): Promise<DbTrade[]> {
       const { data, error } = await db
         .from("trades")
         .select("*")
+        .eq("bioguide_id", bioguideId)
         .range(from, from + pageSize - 1)
       if (error) {
-        console.error("[db] getAllTradesFromDb:", error.message)
+        console.error(`[db] getTradesByBioguide(${bioguideId}):`, error.message)
         break
       }
       const rows = (data as DbTrade[]) ?? []
@@ -194,9 +200,23 @@ export async function getAllTradesFromDb(): Promise<DbTrade[]> {
       if (rows.length < pageSize) break
     }
   } catch (error) {
-    console.error("[db] getAllTradesFromDb threw:", error)
+    console.error(`[db] getTradesByBioguide(${bioguideId}) threw:`, error)
   }
   return all
+}
+
+// Wipe the trades table. Only used for the one-time migration off the old
+// id scheme before the first unified backfill; the scheduled backfill upserts.
+export async function deleteAllTrades(): Promise<void> {
+  const db = await getDb()
+  if (!db) return
+  try {
+    // PostgREST requires a filter on delete; trade_id is never empty.
+    const { error } = await db.from("trades").delete().neq("trade_id", "")
+    if (error) console.error("[db] deleteAllTrades:", error.message)
+  } catch (error) {
+    console.error("[db] deleteAllTrades threw:", error)
+  }
 }
 
 export async function upsertTrades(rows: DbTrade[]): Promise<void> {

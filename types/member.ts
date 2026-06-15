@@ -22,6 +22,7 @@ export interface PacDonation {
 }
 
 export interface Trade {
+  id: string
   ticker: string
   transactionDate: string
   transactionType: string

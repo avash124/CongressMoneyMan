@@ -1,12 +1,3 @@
-// One-off, read-only audit of the `members` table against the live roster.
-//
-//   npm run diff-members
-//
-// Prints exactly which DB rows would be removed by the prune step in
-// upsertMembers (i.e. bioguide_ids in the DB but no longer in the Congress.gov
-// feed), plus any live members missing from the DB. Touches nothing — purely a
-// sanity check before relying on the auto-prune.
-
 import "./load-env"
 import { fetchHouseMembers, fetchSenateMembers } from "../lib/congress"
 import { getMembersFromDb } from "../lib/db"

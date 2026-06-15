@@ -46,6 +46,22 @@ function formatDate(value: string) {
   return dateFormatter.format(parsed)
 }
 
+// Quiver's live feed only carries the security type, not a company name, so the
+// Asset column shows a humanized type. Unknown codes fall through to the raw
+// value rather than being mislabeled.
+const ASSET_TYPE_LABELS: Record<string, string> = {
+  Stock: "Stock",
+  ST: "Stock",
+  OP: "Option",
+  CS: "Common Stock",
+}
+
+function formatAssetType(value: string) {
+  const key = value.trim()
+  if (!key) return "—"
+  return ASSET_TYPE_LABELS[key] ?? key
+}
+
 export default function LiveTrades() {
 
   const [trades,setTrades] = useState<LiveTrade[] | null>(null)
@@ -116,7 +132,7 @@ Recent Congressional Trades
 <th className="px-4 py-3">Member</th>
 <th className="px-4 py-3">Party</th>
 <th className="px-4 py-3">Ticker</th>
-<th className="px-4 py-3">Asset</th>
+<th className="px-4 py-3">Type</th>
 <th className="px-4 py-3">Transaction</th>
 <th className="px-4 py-3 text-right">Amount</th>
 
@@ -167,11 +183,20 @@ className="font-semibold text-gray-900 hover:text-blue-600"
 </td>
 
 <td className="px-4 py-3 font-semibold">
-{trade.ticker === "-" ? "—" : trade.ticker}
+{trade.ticker === "-" || !trade.id ? (
+  trade.ticker === "-" ? "—" : trade.ticker
+) : (
+  <Link
+    href={`/trade/${encodeURIComponent(trade.id)}`}
+    className="text-blue-600 hover:underline"
+  >
+    {trade.ticker}
+  </Link>
+)}
 </td>
 
 <td className="px-4 py-3 text-gray-600">
-{trade.assetName}
+{formatAssetType(trade.assetType)}
 </td>
 
 <td className="px-4 py-3 font-medium">

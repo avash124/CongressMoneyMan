@@ -1,6 +1,7 @@
 import { getCache, setCache, incrementCache } from "./cache"
 import {
-  getAllTradesFromDb,
+  getRecentTradesFromDb,
+  getTradesByBioguide,
   upsertTrades,
   writeBack,
   type DbTrade,
@@ -174,6 +175,14 @@ type RawQuiverApiTrade = {
   Description?: string | null
 }
 
+// Stable per-filing identity. Deliberately excludes `Range`: the live feed
+// carries a formatted range ("$1,001 - $15,000") while the bulk-history feed
+// only carries the numeric `Amount`/`Trade_Size_USD` lower bound — and the
+// range is fully derivable from that amount. Keeping `Range` out means the same
+// trade from either feed collapses to one id, so the full-history backfill and
+// the 15-minute live sync never produce duplicate rows for the same disclosure.
+// The first segment is always the bioguide id, which `loadTradeDetail` relies on
+// to resolve a trade back to its member's history.
 function syntheticTradeId(raw: RawQuiverApiTrade): string {
   return [
     raw.BioGuideID ?? "",
@@ -181,7 +190,6 @@ function syntheticTradeId(raw: RawQuiverApiTrade): string {
     raw.Ticker ?? "",
     raw.Transaction ?? "",
     raw.Amount ?? "",
-    raw.Range ?? "",
     raw.ReportDate ?? "",
   ].join("|")
 }
@@ -214,7 +222,10 @@ export async function fetchAllCongressTrades(
     const cached = await getCache<RawCongressTrade[]>(CONGRESS_TRADES_KEY)
     if (cached) return cached
 
-    const stored = await getAllTradesFromDb()
+    // Only the most-recent slice feeds the live-trades page / pairing fallback.
+    // The trades table now also holds the full multi-year backfill, which must
+    // not be loaded whole here (it would bloat the Redis cache and the live UI).
+    const stored = await getRecentTradesFromDb()
     if (stored.length > 0) {
       const trades = stored.map(dbRowToTrade)
       await setCache(CONGRESS_TRADES_KEY, trades, CONGRESS_TRADES_TTL_SECONDS)
@@ -254,6 +265,183 @@ export async function fetchAllCongressTrades(
   }
 
   return trades
+}
+
+// ---------------------------------------------------------------------------
+// Full historical backfill (bulk endpoint)
+//
+// `/beta/live/congresstrading` is capped at the most-recent ~1000 disclosures
+// across all of Congress (~1 year), which is why member profiles looked
+// truncated. `/beta/bulk/congresstrading` paginates the entire history (back to
+// ~2020), so the backfill job can persist every member's complete record.
+// ---------------------------------------------------------------------------
+
+type RawQuiverBulkTrade = {
+  Ticker?: string
+  TickerType?: string
+  Company?: string | null
+  Traded?: string
+  Transaction?: string
+  Trade_Size_USD?: string | number
+  Description?: string | null
+  Name?: string
+  BioGuideID?: string
+  Filed?: string
+  Party?: string
+  Chamber?: string
+}
+
+function normalizeBulkTrade(raw: RawQuiverBulkTrade): RawCongressTrade {
+  // Reuse the live-feed id logic so the same disclosure dedupes across feeds.
+  const id = syntheticTradeId({
+    BioGuideID: raw.BioGuideID,
+    TransactionDate: raw.Traded,
+    Ticker: raw.Ticker,
+    Transaction: raw.Transaction,
+    Amount: raw.Trade_Size_USD,
+    ReportDate: raw.Filed,
+  })
+  return {
+    UniqueID: id,
+    Bioguide: raw.BioGuideID,
+    Representative: raw.Name,
+    Party: raw.Party,
+    Chamber: raw.Chamber,
+    Ticker: raw.Ticker,
+    AssetDescription: raw.Description ?? raw.Company ?? undefined,
+    AssetType: raw.TickerType,
+    Transaction: raw.Transaction,
+    Date: raw.Traded,
+    Traded: raw.Traded,
+    // No formatted range in the bulk feed — it is reconstructed from the amount
+    // on read (see formatTradeRange).
+    Range: undefined,
+    Trade_Size_USD: raw.Trade_Size_USD,
+    ReportDate: raw.Filed,
+  }
+}
+
+const BULK_PAGE_SIZE = 1000
+const BULK_MAX_PAGES = 200
+
+// Fetch one bulk page. The natural end of the dataset is a short/empty page, so
+// transient 429/5xx responses are retried with backoff (a single blip must not
+// truncate the multi-year history). Returns null only after retries are
+// exhausted, or for a non-array body — the caller then stops.
+async function fetchBulkPage(
+  apiKey: string,
+  page: number
+): Promise<RawQuiverBulkTrade[] | null> {
+  const url = `https://api.quiverquant.com/beta/bulk/congresstrading?page=${page}&page_size=${BULK_PAGE_SIZE}`
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(url, {
+      headers: { ...QUIVER_API_HEADERS, Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return Array.isArray(data) ? (data as RawQuiverBulkTrade[]) : null
+    }
+    const transient = res.status === 429 || res.status >= 500
+    if (transient && attempt < MAX_RETRIES) {
+      console.warn(`[quiver] bulk page ${page} -> ${res.status}, retry ${attempt + 1}`)
+      await sleep(RETRY_BASE_DELAYS_MS[attempt] + Math.floor(Math.random() * 250))
+      continue
+    }
+    return null
+  }
+  return null
+}
+
+export async function fetchBulkCongressTrades(
+  apiKey: string
+): Promise<RawCongressTrade[]> {
+  const all: RawCongressTrade[] = []
+  for (let page = 1; page <= BULK_MAX_PAGES; page++) {
+    const data = await fetchBulkPage(apiKey, page)
+    if (!data || data.length === 0) break
+    for (const raw of data) all.push(normalizeBulkTrade(raw))
+    if (data.length < BULK_PAGE_SIZE) break
+  }
+  return [...new Map(all.map((t) => [t.UniqueID, t])).values()]
+}
+
+// A single member's full trade history, read from the persisted backfill. Falls
+// back to filtering the recent live feed when the DB is empty/unavailable so the
+// per-trade and profile pages still work before the first backfill runs.
+export async function fetchMemberCongressTrades(
+  bioguideId: string,
+  apiKey: string
+): Promise<RawCongressTrade[]> {
+  const rows = await getTradesByBioguide(bioguideId)
+  if (rows.length > 0) return rows.map(dbRowToTrade)
+  const all = await fetchAllCongressTrades(apiKey)
+  return all.filter((t) => t.Bioguide === bioguideId)
+}
+
+export function classifyTransaction(value?: string): "buy" | "sell" | "other" {
+  const v = value?.toLowerCase() ?? ""
+  if (v.includes("purchase") || v.includes("buy")) return "buy"
+  if (v.includes("sale") || v.includes("sell") || v.includes("sold")) return "sell"
+  return "other"
+}
+
+function tradeTime(trade: RawCongressTrade): number {
+  return Date.parse(trade.Date ?? "")
+}
+export function findMatchingSale(
+  all: RawCongressTrade[],
+  purchase: RawCongressTrade
+): RawCongressTrade | null {
+  const boughtAt = tradeTime(purchase)
+  if (!Number.isFinite(boughtAt)) return null
+
+  return (
+    all
+      .filter(
+        (t) =>
+          t.Bioguide === purchase.Bioguide &&
+          t.Ticker === purchase.Ticker &&
+          classifyTransaction(t.Transaction) === "sell" &&
+          Number.isFinite(tradeTime(t)) &&
+          tradeTime(t) >= boughtAt
+      )
+      .sort((a, b) => tradeTime(a) - tradeTime(b))[0] ?? null
+  )
+}
+
+// Inverse pairing for when a sale is opened directly: the latest purchase of the
+// same ticker by the same member dated on/before the sale.
+export function findMatchingPurchase(
+  all: RawCongressTrade[],
+  sale: RawCongressTrade
+): RawCongressTrade | null {
+  const soldAt = tradeTime(sale)
+  if (!Number.isFinite(soldAt)) return null
+
+  return (
+    all
+      .filter(
+        (t) =>
+          t.Bioguide === sale.Bioguide &&
+          t.Ticker === sale.Ticker &&
+          classifyTransaction(t.Transaction) === "buy" &&
+          Number.isFinite(tradeTime(t)) &&
+          tradeTime(t) <= soldAt
+      )
+      .sort((a, b) => tradeTime(b) - tradeTime(a))[0] ?? null
+  )
+}
+
+// Parse a disclosure range like "$1,001 - $15,000" into numeric bounds. A single
+// value collapses to low === high.
+export function parseTradeRange(range?: string): { low: number; high: number } | null {
+  if (!range) return null
+  const nums = range.replace(/,/g, "").match(/\d+(?:\.\d+)?/g)
+  if (!nums || nums.length === 0) return null
+  const low = Number(nums[0])
+  const high = nums.length > 1 ? Number(nums[1]) : low
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return null
+  return { low, high }
 }
 
 export function formatTradeRange(lowerBound: number): string {
