@@ -3,6 +3,7 @@ import {
   fetchAllCongressTrades,
   fetchBulkCongressTrades,
   tradeToDbRow,
+  type RawCongressTrade,
 } from "./quiver"
 import { fetchFecTotals, fetchPacDonations } from "./fec"
 import { resolveFecCandidate, currentCycle, aggregateDonors } from "./profile"
@@ -25,6 +26,76 @@ function resolveCongressApiKey(): string {
 
 function lastName(listName: string): string {
   return listName.split(",")[0]?.trim() || listName
+}
+
+const NAME_SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "v"])
+
+// Order-independent, accent-insensitive name key so the roster's "Last, First"
+// and Quiver's "First Last" collapse to the same value (e.g. "Van Hollen, Chris"
+// and "Chris Van Hollen" both -> "chris hollen van").
+function nameTokenKey(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[^\x00-\x7F]/g, "")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((token) => token && !NAME_SUFFIXES.has(token))
+    .sort()
+    .join(" ")
+}
+
+function buildBioguideByName(
+  members: { id: string; name: string }[]
+): Map<string, string> {
+  const byKey = new Map<string, string>()
+  const ambiguous = new Set<string>()
+  for (const member of members) {
+    const key = nameTokenKey(member.name)
+    if (!key) continue
+    const existing = byKey.get(key)
+    if (existing && existing !== member.id) ambiguous.add(key)
+    else byKey.set(key, member.id)
+  }
+  // Drop names shared by two members rather than risk attributing a trade to the
+  // wrong person; those stay unresolved (and are dropped on insert, as before).
+  for (const key of ambiguous) byKey.delete(key)
+  return byKey
+}
+
+function attachMissingBioguides(
+  trades: RawCongressTrade[],
+  byName: Map<string, string>
+): number {
+  let resolved = 0
+  for (const trade of trades) {
+    if (trade.Bioguide || !trade.Representative) continue
+    const id = byName.get(nameTokenKey(trade.Representative))
+    if (id) {
+      trade.Bioguide = id
+      resolved += 1
+    }
+  }
+  return resolved
+}
+
+// Quiver's congress feed only carries a BioGuideID for House members, so every
+// Senate disclosure arrives without one and tradeToDbRow drops it — which is why
+// senator profiles showed no trades. Backfill the id from the synced roster by
+// name so Senate trades persist too. Degrades to a no-op if the roster can't be
+// loaded, leaving the prior (House-only) behavior untouched.
+async function resolveMissingBioguides(trades: RawCongressTrade[]): Promise<number> {
+  if (!trades.some((trade) => !trade.Bioguide && trade.Representative)) return 0
+  try {
+    const apiKey = resolveCongressApiKey()
+    const [house, senate] = await Promise.all([
+      fetchHouseMembers(apiKey),
+      fetchSenateMembers(apiKey),
+    ])
+    return attachMissingBioguides(trades, buildBioguideByName([...house, ...senate]))
+  } catch (error) {
+    console.warn("[sync] bioguide name-resolution skipped:", error)
+    return 0
+  }
 }
 
 // Snapshot the current House + Senate rosters into `members`.
@@ -65,11 +136,13 @@ export async function syncTrades(): Promise<{ fetched: number; persisted: number
   if (!apiKey) throw new Error("Missing QUIVER_API_KEY")
 
   const trades = await fetchAllCongressTrades(apiKey, { forceRefresh: true })
+  const resolved = await resolveMissingBioguides(trades)
   const rows = trades
     .map(tradeToDbRow)
     .filter((row): row is DbTrade => row !== null)
 
   await upsertTrades(rows)
+  console.log(`[sync] syncTrades: resolved ${resolved} trade(s) to a bioguide by name`)
   return { fetched: trades.length, persisted: rows.length }
 }
 
@@ -85,11 +158,13 @@ export async function backfillTrades(): Promise<{
   if (!apiKey) throw new Error("Missing QUIVER_API_KEY")
 
   const trades = await fetchBulkCongressTrades(apiKey)
+  const resolved = await resolveMissingBioguides(trades)
   const rows = trades
     .map(tradeToDbRow)
     .filter((row): row is DbTrade => row !== null)
 
   await upsertTrades(rows)
+  console.log(`[sync] backfillTrades: resolved ${resolved} trade(s) to a bioguide by name`)
   return { fetched: trades.length, persisted: rows.length }
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
+import { Pie, PieChart, Tooltip } from "recharts"
 import type { AssetAllocation } from "@/types/member"
 
 // Distinct, color-blind-friendly palette cycled across asset-type slices.
@@ -50,23 +50,23 @@ export default function PortfolioBreakdownCard({
         <p className="text-gray-500">No portfolio data available.</p>
       ) : (
         <div className="flex flex-col items-center gap-8 lg:flex-row lg:gap-12">
-          {/* Donut chart with a centered total. Fixed pixel size so
-              ResponsiveContainer always measures a real width/height. */}
+          {/* Donut chart with a centered total. Rendered at a fixed pixel size
+              (matching the h-64/w-64 box) instead of ResponsiveContainer, whose
+              height="100%" can't be measured on the first paint and logs a
+              width(-1)/height(-1) warning. */}
           <div className="relative h-64 w-64 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="value"
-                  nameKey="category"
-                  innerRadius="62%"
-                  outerRadius="100%"
-                  paddingAngle={1.5}
-                  stroke="none"
-                />
-                <Tooltip formatter={(value) => usd.format(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart width={256} height={256}>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="category"
+                innerRadius="62%"
+                outerRadius="100%"
+                paddingAngle={1.5}
+                stroke="none"
+              />
+              <Tooltip formatter={(value) => usd.format(Number(value))} />
+            </PieChart>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xs uppercase tracking-wide text-gray-400">
                 Total
