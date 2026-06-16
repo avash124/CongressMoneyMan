@@ -29,3 +29,8 @@ export interface Trade {
   transactionType: string
   amount: string
 }
+
+export interface AssetAllocation {
+  category: string
+  value: number
+}

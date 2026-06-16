@@ -1,15 +1,18 @@
-// Per-section profile loaders for member / senator pages.
-//
-// Each loader is wrapped in React `cache()` so that, within a single request,
-// the shared Congress.gov fetch and FEC lookup run exactly once even though
-// multiple streamed <Suspense> sections await them independently. This replaces
-// the previous intra-server HTTP self-call (`fetch(.../api/member/${id})`) and
-// lets the fast Congress.gov header stream ahead of the slow FEC/Quiver data.
-
 import { cache } from "react"
-import type { Industry, Member, PacDonation, Trade } from "@/types/member"
+import type {
+  AssetAllocation,
+  Industry,
+  Member,
+  PacDonation,
+  Trade,
+} from "@/types/member"
 import { getStateCode } from "./congress"
-import { fetchAllCongressTrades, formatTradeRange } from "./quiver"
+import {
+  classifyTransaction,
+  fetchAllCongressTrades,
+  formatTradeRange,
+  parseTradeRange,
+} from "./quiver"
 import { fetchPacDonations, fetchFecTotals, computeTopIndustries } from "./fec"
 import {
   getFecCandidateFromDb,
@@ -56,9 +59,6 @@ export type FecResult = {
   topIndustries: Industry[]
 }
 
-// The header only needs totals (one cheap FEC request); the industries / PAC
-// cards need the donations (up to 15 sequential FEC pages). Loading them
-// separately lets the header stream ahead instead of blocking on pagination.
 export type FecTotalsResult = { totalRaised: number; totalSpent: number }
 export type FecDonationsResult = { pacDonations: PacDonation[]; topIndustries: Industry[] }
 
@@ -106,11 +106,6 @@ function tradeFromDbRow(row: DbTrade): Trade {
     amount: row.range_text ?? formatTradeRange(Number(row.trade_size_usd ?? 0)),
   }
 }
-
-// Member profiles show each member's ten most-recent disclosed trades, newest
-// first. The backfilled `trades` table (Quiver's bulk endpoint) is the source,
-// indexed per member; the live feed — capped at ~1000 recent disclosures across
-// all of Congress — is only a fallback for before the first backfill has run.
 const RECENT_TRADES_LIMIT = 10
 
 const byTradeDateDesc = (a: Trade, b: Trade): number =>
@@ -144,6 +139,102 @@ export const loadTrades = cache(async (id: string): Promise<Trade[]> => {
     return []
   }
 })
+function normalizeAssetCategory(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim().toLowerCase()
+  if (!v) return "Other"
+  if (v.includes("etf") || v.includes("exchange-traded") || v.includes("exchange traded"))
+    return "ETFs"
+  if (v.includes("crypto")) return "Crypto"
+  if (v.includes("option")) return "Options"
+  if (v.includes("muni")) return "Municipal Bonds"
+  if (v.includes("bond") || v.includes("debt") || v.includes("note")) return "Bonds"
+  if (v.includes("trust")) return "Trusts"
+  if (v.includes("mutual") || v.includes("fund")) return "Mutual Funds"
+  if (
+    v.includes("stock") ||
+    v === "st" ||
+    v.includes("equity") ||
+    v.includes("common") ||
+    v.includes("share")
+  )
+    return "Stocks"
+  return raw!.trim().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function disclosureMidpoint(
+  rangeText: string | null,
+  lowerBound: number | null
+): number {
+  const text = rangeText ?? (lowerBound != null ? formatTradeRange(lowerBound) : null)
+  const parsed = parseTradeRange(text ?? undefined)
+  if (parsed) return (parsed.low + parsed.high) / 2
+  const size = Number(lowerBound ?? 0)
+  return Number.isFinite(size) ? size : 0
+}
+
+type RawPosition = {
+  ticker: string
+  category: string
+  direction: "buy" | "sell" | "other"
+  value: number
+}
+
+function breakdownFromPositions(positions: RawPosition[]): AssetAllocation[] {
+  const netByTicker = new Map<string, { category: string; net: number }>()
+  for (const p of positions) {
+    if (p.direction === "other") continue
+    const signed = p.direction === "buy" ? p.value : -p.value
+    const existing = netByTicker.get(p.ticker)
+    if (existing) existing.net += signed
+    else netByTicker.set(p.ticker, { category: p.category, net: signed })
+  }
+
+  const byCategory = new Map<string, number>()
+  for (const { category, net } of netByTicker.values()) {
+    if (net <= 0) continue
+    byCategory.set(category, (byCategory.get(category) ?? 0) + net)
+  }
+
+  return [...byCategory.entries()]
+    .map(([category, value]) => ({ category, value: Math.round(value) }))
+    .sort((a, b) => b.value - a.value)
+}
+export const loadPortfolioBreakdown = cache(
+  async (id: string): Promise<AssetAllocation[]> => {
+    const rows = await getTradesByBioguide(id)
+    if (rows.length > 0) {
+      return breakdownFromPositions(
+        rows.map((r) => ({
+          ticker: r.ticker || r.asset_name || "Unknown",
+          category: normalizeAssetCategory(r.asset_type),
+          direction: classifyTransaction(r.transaction_type ?? undefined),
+          value: disclosureMidpoint(r.range_text, r.trade_size_usd),
+        }))
+      )
+    }
+
+    const apiKey = process.env.QUIVER_API_KEY
+    if (!apiKey) return []
+    try {
+      const all = await fetchAllCongressTrades(apiKey)
+      return breakdownFromPositions(
+        all
+          .filter((t) => t.Bioguide === id)
+          .map((t) => ({
+            ticker: t.Ticker || t.AssetDescription || "Unknown",
+            category: normalizeAssetCategory(t.AssetType),
+            direction: classifyTransaction(t.Transaction),
+            value: disclosureMidpoint(
+              t.Range ?? null,
+              t.Trade_Size_USD != null ? Number(t.Trade_Size_USD) : null
+            ),
+          }))
+      )
+    } catch {
+      return []
+    }
+  }
+)
 
 type FecCandidateRef = { candidateId: string; committeeIds: string[] }
 
@@ -164,8 +255,6 @@ export function currentCycle(): number {
   return year % 2 === 0 ? year : year - 1
 }
 
-// Collapse the raw per-contribution list into per-donor totals — the shape stored
-// in `pac_donations` and read back to derive top donors + industries.
 export function aggregateDonors(
   allDonations: { pacName: string; amount: number }[]
 ): { pacName: string; amount: number }[] {
@@ -181,10 +270,6 @@ function donationsFromRows(rows: DbPacDonation[]): FecDonationsResult {
   const pacDonations = [...donations].sort((a, b) => b.amount - a.amount).slice(0, 10)
   return { pacDonations, topIndustries: computeTopIndustries(donations) }
 }
-
-// DB-first totals: serve the persisted candidate row on a hit; on a miss resolve
-// the candidate, return live FEC totals, and write the row back for next time.
-// `resolveRef` is a thunk so the candidate search only runs on a DB miss.
 async function loadFecTotals(
   id: string,
   resolveRef: () => Promise<FecCandidateRef | null>
@@ -208,9 +293,6 @@ async function loadFecTotals(
   }
   return totals
 }
-
-// DB-first donations: serve persisted per-donor rows on a hit; on a miss fetch the
-// FEC donations, return top donors + industries, and write the aggregates back.
 async function loadFecDonations(
   id: string,
   resolveRef: () => Promise<FecCandidateRef | null>
@@ -243,11 +325,6 @@ function principalCommittees(candidate: FecCandidate): string[] {
       .filter((cid): cid is string => Boolean(cid)) ?? []
   )
 }
-
-// ---------------------------------------------------------------------------
-// House member
-// ---------------------------------------------------------------------------
-
 export const loadMemberBase = cache(async (id: string): Promise<Member | null> => {
   const member = await fetchRawMember(id)
   if (!member?.bioguideId) return null
@@ -270,12 +347,6 @@ export const loadMemberBase = cache(async (id: string): Promise<Member | null> =
     trades: [],
   }
 })
-
-// Search FEC for a candidate + principal committees. Extracted from the per-request
-// resolvers below so the `sync-fec` ETL cron can resolve candidates straight from a
-// member list without the request-scoped Congress.gov detail fetch / React cache.
-// `preferIncumbent` selects the incumbent-then-active candidate (senators); otherwise
-// the first result is taken (House).
 export type FecSearchParams = {
   name: string
   stateCode: string

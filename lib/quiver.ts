@@ -221,10 +221,6 @@ export async function fetchAllCongressTrades(
   if (!force) {
     const cached = await getCache<RawCongressTrade[]>(CONGRESS_TRADES_KEY)
     if (cached) return cached
-
-    // Only the most-recent slice feeds the live-trades page / pairing fallback.
-    // The trades table now also holds the full multi-year backfill, which must
-    // not be loaded whole here (it would bloat the Redis cache and the live UI).
     const stored = await getRecentTradesFromDb()
     if (stored.length > 0) {
       const trades = stored.map(dbRowToTrade)

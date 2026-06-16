@@ -3,10 +3,12 @@ import MemberHeader from "@/components/MemberHeader"
 import TopIndustriesCard from "@/components/TopIndustriesCard"
 import PacDonationsSection from "@/components/PACDonationsCard"
 import CongressTradesCard from "@/components/CongressTradesCard"
+import PortfolioBreakdownCard from "@/components/PortfolioBreakdownCard"
 import {
   loadMemberBase,
   loadMemberFecTotals,
   loadMemberFecDonations,
+  loadPortfolioBreakdown,
   loadTrades,
 } from "@/lib/profile"
 
@@ -37,6 +39,11 @@ async function HeaderSection({ id }: { id: string }) {
 async function IndustriesSection({ id }: { id: string }) {
   const { topIndustries } = await loadMemberFecDonations(id)
   return <TopIndustriesCard industries={topIndustries} />
+}
+
+async function PortfolioSection({ id }: { id: string }) {
+  const allocations = await loadPortfolioBreakdown(id)
+  return <PortfolioBreakdownCard allocations={allocations} />
 }
 
 async function DonationsSection({ id }: { id: string }) {
@@ -92,6 +99,12 @@ export default async function MemberPage({
         </Suspense>
         <Suspense fallback={<CardSkeleton />}>
           <IndustriesSection id={id} />
+        </Suspense>
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <Suspense fallback={<CardSkeleton />}>
+          <PortfolioSection id={id} />
         </Suspense>
       </div>
 
