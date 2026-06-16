@@ -15,7 +15,7 @@ import {
   parseTradeRange,
   type RawCongressTrade,
 } from "./quiver"
-import { getDaySnapshot, getLatestSnapshot, type DaySnapshot } from "./massive"
+import { getDaySnapshot, getLatestSnapshot, type DaySnapshot } from "./prices"
 
 export type TradeLeg = { date: string; range: string; transactionType: string }
 
