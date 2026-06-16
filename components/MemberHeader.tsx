@@ -1,8 +1,16 @@
+import Image from "next/image"
 import { Member } from "@/types/member"
 import { isNonVotingHouseSeat } from "@/lib/congress"
 
 interface MemberHeaderProps {
   member: Member
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const first = parts[0]?.[0] ?? ""
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : ""
+  return (first + last).toUpperCase() || "?"
 }
 
 export default function MemberHeader({ member }: MemberHeaderProps) {
@@ -16,6 +24,13 @@ export default function MemberHeader({ member }: MemberHeaderProps) {
       : member.party === "R"
       ? "bg-red-600"
       : "bg-gray-500"
+
+  const partyRing =
+    member.party === "D"
+      ? "ring-blue-500"
+      : member.party === "R"
+      ? "ring-red-500"
+      : "ring-gray-400"
 
   const partyLabel =
     member.party === "D"
@@ -31,7 +46,30 @@ export default function MemberHeader({ member }: MemberHeaderProps) {
 
   return(
 
-<div className="dashboard-card p-10 flex flex-col gap-6">
+<div className="dashboard-card p-10 flex flex-col gap-8">
+
+<div className="flex items-center gap-7">
+
+<div
+className={`shrink-0 h-32 w-32 overflow-hidden rounded-2xl bg-gray-100 ring-4 ring-offset-2 ${partyRing}`}
+>
+{member.imageUrl ? (
+<Image
+src={member.imageUrl}
+alt={member.name}
+width={128}
+height={128}
+className="h-full w-full object-cover object-top"
+priority
+/>
+) : (
+<div className="flex h-full w-full items-center justify-center text-3xl font-bold text-gray-400">
+{getInitials(member.name)}
+</div>
+)}
+</div>
+
+<div className="flex flex-col gap-3">
 
 <h1 className="text-4xl font-bold text-gray-900">
 {member.name}
@@ -49,7 +87,11 @@ Non-voting member of the House
 </div>
 )}
 
-<div className="flex gap-12 pt-4">
+</div>
+
+</div>
+
+<div className="flex gap-12 pt-6 border-t border-gray-100">
 
 <div>
 

@@ -6,6 +6,7 @@ export type HouseMember = {
   party: "D" | "R" | "I"
   state: string
   district: string
+  imageUrl?: string
 }
 
 export type SenateMember = {
@@ -13,6 +14,7 @@ export type SenateMember = {
   name: string
   party: "D" | "R" | "I"
   state: string
+  imageUrl?: string
 }
 
 type RawTerm = {
@@ -31,6 +33,7 @@ type RawMember = {
   state?: string
   district?: string | number | null
   terms?: { item?: RawTerm[] }
+  depiction?: { imageUrl?: string; attribution?: string }
 }
 
 const STATE_NAME_TO_CODE: Record<string, string> = {
@@ -204,6 +207,7 @@ export async function fetchHouseMembers(apiKey: string): Promise<HouseMember[]> 
       party,
       state,
       district: finalDistrict,
+      imageUrl: member.depiction?.imageUrl,
     })
   }
 
@@ -240,6 +244,7 @@ export async function fetchSenateMembers(apiKey: string): Promise<SenateMember[]
       name: member.name,
       party,
       state,
+      imageUrl: member.depiction?.imageUrl,
     })
   }
 

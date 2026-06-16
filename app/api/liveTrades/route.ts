@@ -7,6 +7,12 @@ import {
 
 export const revalidate = 900
 
+// The page surfaces the most-recent disclosures across all of Congress. Both
+// sources of the feed (Quiver's live endpoint and the DB-backed recent slice)
+// hold ~1000 rows; cap here so the page renders exactly the 1000 newest
+// regardless of source.
+const LIVE_TRADES_LIMIT = 1000
+
 type LiveTrade = {
   amount: string
   assetName: string
@@ -67,6 +73,7 @@ export async function GET() {
         if (filedCompare !== 0) return filedCompare
         return Date.parse(right.tradeDate) - Date.parse(left.tradeDate)
       })
+      .slice(0, LIVE_TRADES_LIMIT)
 
     return NextResponse.json({
       trades,

@@ -5,6 +5,7 @@ export type DbMember = {
   state: string
   district: string | null
   chamber: "house" | "senate"
+  image_url: string | null
 }
 
 export type DbTrade = {
