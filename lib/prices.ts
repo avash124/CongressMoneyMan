@@ -131,11 +131,52 @@ async function fetchFmpDailyWindow(ticker: string, date: string): Promise<PriceB
     label: "fmp",
   })
   if (!rows?.length) return []
-  // FMP returns newest-first; charts want chronological order.
   return rows
     .filter((b) => b.date <= date)
     .map((b) => ({ t: Date.parse(b.date), o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume }))
     .sort((a, b) => a.t - b.t)
+}
+
+export async function getDailyCloses(
+  ticker: string,
+  fromDate: string
+): Promise<{ date: string; close: number }[]> {
+  const url = fmpUrl("/historical-price-eod/full", {
+    symbol: ticker,
+    from: fromDate,
+    to: isoDate(Date.now()),
+  })
+  if (url) {
+    const rows = await fetchJson<FmpDailyBar[]>(url, {
+      revalidate: HISTORY_REVALIDATE_SECONDS,
+      label: "fmp",
+    })
+    if (rows?.length) {
+      return rows
+        .map((b) => ({ date: b.date, close: b.close }))
+        .filter((b) => Number.isFinite(b.close))
+        .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+    }
+  }
+
+  // FMP missing or rate-limited — fall back to Alpaca's daily bars, which draw
+  // on a separate quota, so a maxed-out FMP key can't blank the leaderboard.
+  const bars = await alpacaBars(
+    ticker,
+    {
+      timeframe: "1Day",
+      start: fromDate,
+      end: isoDate(Date.now()),
+      adjustment: "all",
+      feed: "iex",
+      sort: "asc",
+      limit: "10000",
+    },
+    HISTORY_REVALIDATE_SECONDS
+  )
+  return bars
+    .map((b) => ({ date: isoDate(b.t), close: b.c }))
+    .filter((b) => Number.isFinite(b.close))
 }
 
 export async function getDaySnapshot(ticker: string, date: string): Promise<DaySnapshot> {
@@ -180,6 +221,94 @@ export async function getDaySnapshot(ticker: string, date: string): Promise<DayS
   }
 
   return { date, open: null, close: null, high: null, low: null, bars: [], timeframe: "daily" }
+}
+
+type FmpProfile = {
+  symbol: string
+  companyName?: string
+  sector?: string
+  industry?: string
+}
+
+export type CompanyProfile = { name: string; sector: string; industry: string }
+export async function getCompanyProfile(ticker: string): Promise<CompanyProfile | null> {
+  const url = fmpUrl("/profile", { symbol: ticker })
+  if (!url) return null
+  const rows = await fetchJson<FmpProfile[]>(url, {
+    revalidate: HISTORY_REVALIDATE_SECONDS,
+    label: "fmp-profile",
+  })
+  const p = rows?.[0]
+  if (!p) return null
+  return {
+    name: p.companyName?.trim() || ticker,
+    sector: p.sector?.trim() || "",
+    industry: p.industry?.trim() || "",
+  }
+}
+
+export type ChartRange = "24H" | "1W" | "1M" | "6M" | "1Y" | "5Y"
+export type ChartPoint = { t: number; c: number }
+
+function dailyFromMs(range: ChartRange, now: number): number {
+  switch (range) {
+    case "24H":
+      return now - 5 * DAY_MS
+    case "1W":
+      return now - 8 * DAY_MS
+    case "1M":
+      return now - 31 * DAY_MS
+    case "6M":
+      return now - 183 * DAY_MS
+    case "1Y":
+      return now - 366 * DAY_MS
+    case "5Y":
+      return now - 5 * 366 * DAY_MS
+  }
+}
+export async function getPriceHistory(
+  ticker: string,
+  range: ChartRange
+): Promise<ChartPoint[]> {
+  const now = Date.now()
+
+  if (range === "24H") {
+    const bars = await alpacaBars(
+      ticker,
+      {
+        timeframe: "5Min",
+        start: `${isoDate(now - 5 * DAY_MS)}T00:00:00Z`,
+        end: new Date(now).toISOString(),
+        adjustment: "all",
+        feed: "iex",
+        sort: "asc",
+        limit: "10000",
+      },
+      LATEST_REVALIDATE_SECONDS
+    )
+    if (bars.length > 0) {
+      const lastDay = isoDate(bars[bars.length - 1].t)
+      return bars.filter((b) => isoDate(b.t) === lastDay).map((b) => ({ t: b.t, c: b.c }))
+    }
+  } else if (range === "1W") {
+    const bars = await alpacaBars(
+      ticker,
+      {
+        timeframe: "1Hour",
+        start: `${isoDate(now - 8 * DAY_MS)}T00:00:00Z`,
+        end: new Date(now).toISOString(),
+        adjustment: "all",
+        feed: "iex",
+        sort: "asc",
+        limit: "10000",
+      },
+      LATEST_REVALIDATE_SECONDS
+    )
+    if (bars.length > 0) return bars.map((b) => ({ t: b.t, c: b.c }))
+  }
+
+  const closes = await getDailyCloses(ticker, isoDate(dailyFromMs(range, now)))
+  return closes.map((b) => ({ t: Date.parse(b.date), c: b.close }))
 }
 
 export async function getLatestSnapshot(ticker: string): Promise<DaySnapshot | null> {

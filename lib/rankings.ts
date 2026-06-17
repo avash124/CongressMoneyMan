@@ -1,22 +1,14 @@
-// Shared rankings computation + cache access.
-//
-// The expensive part (one Quiver request per member — ~435 for the House) lives
-// here so it can be driven from two places:
-//   1. The scheduled cron job (`/api/cron/refresh-rankings`) recomputes and
-//      writes the result to Redis ahead of any user request.
-//   2. The public route handlers read from Redis and only fall back to an inline
-//      computation on a cold cache miss.
-
 import { fetchHouseMembers, fetchSenateMembers, type HouseMember, type SenateMember } from "./congress"
 import { fetchQuiverWithRetry, QuiverCircuitOpenError } from "./quiver"
 import { getCache, setCache } from "./cache"
 import { getPortfoliosFromDb, upsertPortfolios, writeBack, type DbPortfolio } from "./db"
+import { persistHoldings, type HoldingPosition, type MemberHoldings } from "./stockLeaderboard"
 
 export const HOUSE_RANKINGS_KEY = "house-rankings"
 export const SENATE_RANKINGS_KEY = "senate-rankings"
 export const RANKINGS_TTL_SECONDS = 2 * 60 * 60
-const FANOUT_CONCURRENCY = 2
-const FANOUT_DELAY_MS = 750
+const FANOUT_CONCURRENCY = 1
+const FANOUT_DELAY_MS = 1500
 const CIRCUIT_OPEN_PAUSE_MS = 65_000
 const MAX_CIRCUIT_WAITS = 3
 
@@ -25,6 +17,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 type RankingRow<M> = M & {
   netWorth: number | null
   stockHoldings: number | null
+}
+type FanoutRow<M> = RankingRow<M> & { positions: HoldingPosition[]; ok: boolean }
+
+function stripFanoutExtras<M>(row: FanoutRow<M>): RankingRow<M> {
+  const { positions, ok, ...rest } = row
+  void positions
+  void ok
+  return rest as RankingRow<M>
 }
 
 export type RankingsPayload<M> = {
@@ -78,6 +78,20 @@ function getLiveStockHoldings(payload: QuiverTabResponse): number | null {
   return foundPosition ? total : null
 }
 
+function getLivePositions(payload: QuiverTabResponse): HoldingPosition[] {
+  const positions = parseJsonArray(payload.live_stock_portfolio?.live_stock_portfolio)
+  const out: HoldingPosition[] = []
+  for (const position of positions) {
+    if (!Array.isArray(position)) continue
+    const value = position[1]
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue
+    const symbol = typeof position[0] === "string" ? position[0].trim().toUpperCase() : ""
+    if (!symbol) continue
+    out.push({ ticker: symbol, value })
+  }
+  return out
+}
+
 function compareRankingValues(left: number | null, right: number | null): number {
   if (left === null && right === null) return 0
   if (left === null) return 1
@@ -99,7 +113,6 @@ export async function mapWithConcurrency<T, R>(
       const nextIndex = currentIndex
       currentIndex += 1
       results[nextIndex] = await mapper(items[nextIndex])
-      // Space out requests so the whole fan-out stays under Quiver's rate limit.
       if (delayMs > 0 && currentIndex < items.length) await sleep(delayMs)
     }
   }
@@ -120,7 +133,7 @@ function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
 
 async function getRankingRow<M extends { id: string; name: string }>(
   member: M
-): Promise<RankingRow<M>> {
+): Promise<FanoutRow<M>> {
   for (let waits = 0; ; waits++) {
     try {
       const response = await fetchQuiverWithRetry(
@@ -130,7 +143,7 @@ async function getRankingRow<M extends { id: string; name: string }>(
 
       if (!response.ok) {
         console.warn(`[rankings] ${member.id} tab-data HTTP ${response.status}`)
-        return { ...member, netWorth: null, stockHoldings: null }
+        return { ...member, netWorth: null, stockHoldings: null, positions: [], ok: false }
       }
 
       const payload = (await response.json()) as QuiverTabResponse
@@ -138,6 +151,8 @@ async function getRankingRow<M extends { id: string; name: string }>(
         ...member,
         netWorth: getLiveNetWorth(payload),
         stockHoldings: getLiveStockHoldings(payload),
+        positions: getLivePositions(payload),
+        ok: true,
       }
     } catch (error) {
       if (error instanceof QuiverCircuitOpenError && waits < MAX_CIRCUIT_WAITS) {
@@ -151,7 +166,7 @@ async function getRankingRow<M extends { id: string; name: string }>(
         `[rankings] ${member.id} fan-out failed:`,
         error instanceof Error ? error.message : error
       )
-      return { ...member, netWorth: null, stockHoldings: null }
+      return { ...member, netWorth: null, stockHoldings: null, positions: [], ok: false }
     }
   }
 }
@@ -177,12 +192,6 @@ function countPopulated<M>(rows: RankingRow<M>[]): number {
     (row) => row.netWorth !== null || row.stockHoldings !== null
   ).length
 }
-
-// Build a rankings payload from the Congress.gov member list alone, with null
-// financials. Lets the public read path return names/parties/districts instantly
-// on a cold cache without launching the ~435-request Quiver fan-out (which
-// rate-limits and trips the shared circuit breaker). The cron job fills in the
-// financial columns in the background.
 function membersToEmptyPayload<M extends { id: string; name: string }>(
   members: M[]
 ): RankingsPayload<M> {
@@ -191,10 +200,6 @@ function membersToEmptyPayload<M extends { id: string; name: string }>(
   )
 }
 
-// Carry forward the last known non-null value for any member that came back null
-// this run, so a partial upstream failure degrades gracefully instead of wiping
-// the column. A member Quiver permanently stops reporting keeps its last value —
-// an acceptable staleness trade-off for net-worth/holdings data.
 function mergeWithPrevious<M extends { id: string; name: string }>(
   fresh: RankingsPayload<M>,
   previous: RankingsPayload<M> | null
@@ -215,10 +220,6 @@ function mergeWithPrevious<M extends { id: string; name: string }>(
   return buildPayload(mergedRows)
 }
 
-// Merge a fresh compute over the cached payload and cache the result. The merge
-// is monotonic (a member's value only ever goes null -> value, never the reverse),
-// so caching every run is safe and lets partial refreshes accumulate toward a full
-// table across cron runs instead of demanding one perfect, un-rate-limited run.
 async function persistRankings<M extends { id: string; name: string }>(
   key: string,
   fresh: RankingsPayload<M>
@@ -230,10 +231,6 @@ async function persistRankings<M extends { id: string; name: string }>(
   console.log(
     `[rankings] cached ${key}: ${countPopulated(merged.byNetWorth)}/${merged.byNetWorth.length} members populated`
   )
-
-  // The one fan-out fills both Redis (the payload above) and Postgres
-  // (portfolio_data) — so the DB never needs its own redundant fan-out. Only
-  // persist members that actually have a value.
   const portfolioRows: DbPortfolio[] = merged.byNetWorth
     .filter((row) => row.netWorth !== null || row.stockHoldings !== null)
     .map((row) => ({
@@ -246,9 +243,6 @@ async function persistRankings<M extends { id: string; name: string }>(
   return merged
 }
 
-// Build a populated rankings payload by joining the member list with the
-// persisted portfolio_data table. Returns null when the DB holds no portfolios
-// yet, so the caller can fall back to an empty payload.
 async function rankingsFromDb<M extends { id: string; name: string }>(
   members: M[]
 ): Promise<RankingsPayload<M> | null> {
@@ -278,7 +272,7 @@ export async function computeHouseRankings(
 ): Promise<RankingsPayload<HouseMember>> {
   const members = await fetchHouseMembers(apiKey)
   const rows = await mapWithConcurrency(members, FANOUT_CONCURRENCY, getRankingRow, FANOUT_DELAY_MS)
-  return buildPayload(rows)
+  return buildPayload(rows.map(stripFanoutExtras))
 }
 
 export async function computeSenateRankings(
@@ -286,12 +280,8 @@ export async function computeSenateRankings(
 ): Promise<RankingsPayload<SenateMember>> {
   const members = await fetchSenateMembers(apiKey)
   const rows = await mapWithConcurrency(members, FANOUT_CONCURRENCY, getRankingRow, FANOUT_DELAY_MS)
-  return buildPayload(rows)
+  return buildPayload(rows.map(stripFanoutExtras))
 }
-
-// Recompute + cache. Used by the cron job to pre-warm Redis and by the public
-// route handlers on a cold cache miss. Single-flighted so concurrent callers
-// share one fan-out instead of each launching their own (see singleFlight).
 export async function refreshHouseRankings(
   apiKey = resolveCongressApiKey()
 ): Promise<RankingsPayload<HouseMember>> {
@@ -312,8 +302,6 @@ type TaggedMember =
   | { chamber: "house"; member: HouseMember }
   | { chamber: "senate"; member: SenateMember }
 
-// Alternate House/Senate members so the shared Quiver rate budget is spread across
-// both chambers instead of being spent entirely on House first.
 function interleave(house: HouseMember[], senate: SenateMember[]): TaggedMember[] {
   const out: TaggedMember[] = []
   const max = Math.max(house.length, senate.length)
@@ -323,12 +311,6 @@ function interleave(house: HouseMember[], senate: SenateMember[]): TaggedMember[
   }
   return out
 }
-
-// Refresh both chambers in ONE interleaved fan-out so neither starves the shared
-// Quiver rate budget. Running House (~435) then Senate (~100) sequentially left the
-// Senate pass hitting 429s after House had spent the budget, so Senate came back
-// all-null. Results are partitioned back per chamber and persisted to each key +
-// portfolio_data. Used by the worker / cron in place of the two separate refreshers.
 export async function refreshAllRankings(
   apiKey = resolveCongressApiKey()
 ): Promise<{ house: RankingsPayload<HouseMember>; senate: RankingsPayload<SenateMember> }> {
@@ -352,38 +334,40 @@ export async function refreshAllRankings(
 
     const houseRows = results
       .filter(
-        (r): r is { chamber: "house"; row: RankingRow<HouseMember> } => r.chamber === "house"
+        (r): r is { chamber: "house"; row: FanoutRow<HouseMember> } => r.chamber === "house"
       )
       .map((r) => r.row)
     const senateRows = results
       .filter(
-        (r): r is { chamber: "senate"; row: RankingRow<SenateMember> } => r.chamber === "senate"
+        (r): r is { chamber: "senate"; row: FanoutRow<SenateMember> } => r.chamber === "senate"
       )
       .map((r) => r.row)
+    const memberHoldings: MemberHoldings[] = [
+      ...houseRows.map((row) => ({ row, chamber: "house" as const })),
+      ...senateRows.map((row) => ({ row, chamber: "senate" as const })),
+    ]
+      .filter(({ row }) => row.ok)
+      .map(({ row, chamber }) => ({
+        bioguideId: row.id,
+        memberName: row.name,
+        party: row.party,
+        chamber,
+        positions: row.positions,
+      }))
+    writeBack(() => persistHoldings(memberHoldings))
 
     const [house, senate] = await Promise.all([
-      persistRankings(HOUSE_RANKINGS_KEY, buildPayload(houseRows)),
-      persistRankings(SENATE_RANKINGS_KEY, buildPayload(senateRows)),
+      persistRankings(HOUSE_RANKINGS_KEY, buildPayload(houseRows.map(stripFanoutExtras))),
+      persistRankings(SENATE_RANKINGS_KEY, buildPayload(senateRows.map(stripFanoutExtras))),
     ])
     return { house, senate }
   })
 }
 
-// Cache-first read used by the public route handlers: serve Redis on a hit.
-// On a cold cache, return the member list with null financials instead of
-// running the Quiver fan-out inline — that fan-out (one request per ~435 House
-// members) rate-limits, trips the shared circuit breaker, and cascades into
-// "upstream failures" on the trades endpoints. The scheduled cron job
-// (`/api/cron/refresh-rankings`) owns the fan-out and backfills the financials.
 export async function getHouseRankings(): Promise<RankingsPayload<HouseMember>> {
   const cached = await getCache<RankingsPayload<HouseMember>>(HOUSE_RANKINGS_KEY)
   if (cached && countPopulated(cached.byNetWorth) > 0) return cached
-
   const members = await fetchHouseMembers(resolveCongressApiKey())
-
-  // On a cold Redis cache, rebuild from persisted portfolio_data instead of an
-  // empty payload — so the table shows financials without the request triggering
-  // the fan-out. Re-warm Redis with the result.
   const fromDb = await rankingsFromDb(members)
   if (fromDb && countPopulated(fromDb.byNetWorth) > 0) {
     await setCache(HOUSE_RANKINGS_KEY, fromDb, RANKINGS_TTL_SECONDS)

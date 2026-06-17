@@ -29,6 +29,10 @@ Senate
 Trades
 </Link>
 
+<Link href="/Stocks" className="hover:text-blue-600 transition">
+Stocks
+</Link>
+
 </nav>
 
 </div>
