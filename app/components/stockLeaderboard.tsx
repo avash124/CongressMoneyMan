@@ -24,6 +24,8 @@ type HoldingsRow = {
 
 type PerformanceRow = {
   ticker: string
+  name: string
+  sector: string
   gainPct: number
   estGain: number
   boughtValue: number
@@ -83,7 +85,6 @@ function formatPct(value: number) {
   return `${sign}${value.toFixed(1)}%`
 }
 
-// Vibrant, distinct palette for ownership-donut slices.
 const SLICE_COLORS = [
   "#2563eb",
   "#0891b2",
@@ -115,19 +116,6 @@ function memberHref(holder: TickerHolder): string {
   return holder.chamber === "senate"
     ? `/senator/${holder.bioguideId}`
     : `/member/${holder.bioguideId}`
-}
-
-function ChamberSplit({ house, senate }: { house: number; senate: number }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs">
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
-        {house} H
-      </span>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
-        {senate} S
-      </span>
-    </span>
-  )
 }
 
 function tickFormatter(t: number, range: ChartRange): string {
@@ -261,9 +249,6 @@ function PerformanceChart({ ticker }: { ticker: string }) {
   )
 }
 
-// Hover card for a donut slice. The slice itself is the click target (a
-// hover tooltip can't host a clickable link — it closes as the cursor leaves
-// the slice to reach it), so this just identifies the holder and hints at it.
 function HolderTooltip({
   active,
   payload,
@@ -290,9 +275,6 @@ function HolderTooltip({
 function OwnershipPanel({ data }: { data: TickerHolders }) {
   const router = useRouter()
   const { holders, totalValue } = data
-
-  // Every disclosed holder gets its own slice — no "others" bucket — so each
-  // politician is individually visible and clickable on the donut.
   const chartData = holders.map((h, i) => ({
     ...h,
     fill: SLICE_COLORS[i % SLICE_COLORS.length],
@@ -582,17 +564,125 @@ function HoldingsTable({
   )
 }
 
-function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {
+type PerfMetric = "gainPct" | "estGain"
+type PerfView = "gainers" | "losers"
+
+const VIEW_OPTIONS: ReadonlyArray<readonly [PerfView, string]> = [
+  ["gainers", "Top Gainers"],
+  ["losers", "Biggest Losers"],
+]
+
+function SegmentedToggle<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: ReadonlyArray<readonly [T, string]>
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="inline-flex rounded-full bg-slate-100 p-0.5">
+      {options.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+            value === key ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+type SortDir = "asc" | "desc"
+function SortHeader({
+  label,
+  column,
+  metric,
+  direction,
+  onSort,
+}: {
+  label: string
+  column: PerfMetric
+  metric: PerfMetric
+  direction: SortDir
+  onSort: (column: PerfMetric) => void
+}) {
+  const active = metric === column
+  return (
+    <th className="px-4 py-3 text-right font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        aria-label={`Sort by ${label}`}
+        className="inline-flex items-center gap-1 uppercase tracking-[0.18em] transition hover:text-white"
+      >
+        {label}
+        <span className={`text-[10px] ${active ? "text-white" : "text-slate-500"}`}>
+          {active ? (direction === "desc" ? "▼" : "▲") : "↕"}
+        </span>
+      </button>
+    </th>
+  )
+}
+
+function PerformanceTable({
+  rows,
+  holdingsByTicker,
+  onSelect,
+}: {
+  rows: PerformanceRow[]
+  holdingsByTicker: Map<string, HoldingsRow>
+  onSelect: (row: HoldingsRow) => void
+}) {
+  const [metric, setMetric] = useState<PerfMetric>("gainPct")
+  const [direction, setDirection] = useState<SortDir>("desc")
+  const [view, setView] = useState<PerfView>("gainers")
+  const sorted = useMemo(() => {
+    const sign = direction === "desc" ? -1 : 1
+    return rows
+      .filter((r) => (view === "gainers" ? r.gainPct > 0 : r.gainPct < 0))
+      .sort((a, b) => sign * (a[metric] - b[metric]))
+  }, [rows, metric, direction, view])
+
+  const handleSort = (column: PerfMetric) => {
+    if (column === metric) {
+      setDirection((d) => (d === "desc" ? "asc" : "desc"))
+    } else {
+      setMetric(column)
+      setDirection("desc")
+    }
+  }
+  const selectView = (next: PerfView) => {
+    setView(next)
+    setDirection(next === "gainers" ? "desc" : "asc")
+  }
+  const toModalRow = (row: PerformanceRow): HoldingsRow =>
+    holdingsByTicker.get(row.ticker) ?? {
+      ticker: row.ticker,
+      name: row.name,
+      totalValue: 0,
+      sector: row.sector,
+    }
+
   return (
     <section className="dashboard-card">
-      <div className="border-b border-slate-200 px-6 py-5">
-        <h2 className="text-xl font-semibold text-gray-900">
-          Best-Performing Stocks by Congressional Gain
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Estimated gain from disclosed purchase price to today, weighted by disclosed
-          amount, ranked.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-6 py-5">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {view === "gainers" ? "Best" : "Worst"}-Performing Stocks by Congressional Gain
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Estimated gain from disclosed purchase price to today, weighted by disclosed
+            amount, ranked.
+          </p>
+        </div>
+        <SegmentedToggle value={view} options={VIEW_OPTIONS} onChange={selectView} />
       </div>
 
       <div className="max-h-[34rem] overflow-auto">
@@ -600,23 +690,51 @@ function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {
           <thead className="sticky top-0 z-10 bg-slate-950 text-xs uppercase tracking-[0.18em] text-slate-200">
             <tr>
               <th className="px-4 py-3 font-medium">Rank</th>
-              <th className="px-4 py-3 font-medium">Ticker</th>
-              <th className="px-4 py-3 font-medium">Buyers</th>
-              <th className="px-4 py-3 text-right font-medium">Est. Gain</th>
-              <th className="px-4 py-3 text-right font-medium">Gain %</th>
+              <th className="px-4 py-3 font-medium">Stock</th>
+              <th className="px-4 py-3 font-medium">Categorization</th>
+              <SortHeader
+                label="Est. Gain"
+                column="estGain"
+                metric={metric}
+                direction={direction}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Gain %"
+                column="gainPct"
+                metric={metric}
+                direction={direction}
+                onSort={handleSort}
+              />
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
+            {sorted.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-4 py-10 text-center text-sm text-slate-400"
+                >
+                  {view === "gainers"
+                    ? "No traded stocks are showing a gain right now."
+                    : "No traded stocks are showing a loss right now."}
+                </td>
+              </tr>
+            ) : (
+              sorted.map((row, index) => (
               <tr
                 key={row.ticker}
-                className="border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70"
+                onClick={() => onSelect(toModalRow(row))}
+                className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50"
               >
                 <td className="px-4 py-3 font-medium text-slate-500">{index + 1}</td>
-                <td className="px-4 py-3 font-semibold text-gray-900">{row.ticker}</td>
                 <td className="px-4 py-3">
-                  <ChamberSplit house={row.houseCount} senate={row.senateCount} />
+                  <span className="font-semibold text-gray-900">{row.ticker}</span>
+                  <span className="ml-2 hidden text-xs text-slate-500 sm:inline">
+                    {row.name}
+                  </span>
                 </td>
+                <td className="px-4 py-3 text-slate-600">{row.sector}</td>
                 <td
                   className={`px-4 py-3 text-right font-semibold ${
                     row.estGain >= 0 ? "text-emerald-600" : "text-red-600"
@@ -632,7 +750,8 @@ function PerformanceTable({ rows }: { rows: PerformanceRow[] }) {
                   {formatPct(row.gainPct)}
                 </td>
               </tr>
-            ))}
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -688,6 +807,8 @@ export default function StockLeaderboard() {
     )
   }
 
+  const holdingsByTicker = new Map(data.holdings.map((h) => [h.ticker, h]))
+
   return (
     <div className="flex flex-col gap-6">
       {data.holdings.length === 0 ? (
@@ -703,7 +824,11 @@ export default function StockLeaderboard() {
           Performance data is still populating. Check back after the next refresh.
         </div>
       ) : (
-        <PerformanceTable rows={data.performance} />
+        <PerformanceTable
+          rows={data.performance}
+          holdingsByTicker={holdingsByTicker}
+          onSelect={setSelected}
+        />
       )}
 
       {selected ? (

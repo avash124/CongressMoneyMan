@@ -5,6 +5,12 @@ const RETRY_BASE_DELAYS_MS = [800, 2500, 6000]
 const DAY_MS = 24 * 60 * 60 * 1000
 const HISTORY_REVALIDATE_SECONDS = 24 * 60 * 60
 const LATEST_REVALIDATE_SECONDS = 15 * 60
+const FMP_COOLDOWN_MS = 2 * 60 * 1000
+let fmpCooldownUntil = 0
+const fmpRateLimited = () => Date.now() < fmpCooldownUntil
+const noteFmpRateLimit = () => {
+  fmpCooldownUntil = Date.now() + FMP_COOLDOWN_MS
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -28,7 +34,12 @@ export type DaySnapshot = {
 }
 async function fetchJson<T>(
   url: string,
-  opts: { headers?: Record<string, string>; revalidate: number; label: string }
+  opts: {
+    headers?: Record<string, string>
+    revalidate: number
+    label: string
+    onRateLimit?: () => void
+  }
 ): Promise<T | null> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -38,18 +49,20 @@ async function fetchJson<T>(
       })
 
       if (res.ok) return (await res.json()) as T
-      const transient = res.status === 429 || res.status >= 500
+
+      if (res.status === 429) {
+        opts.onRateLimit?.()
+        console.warn(`[${opts.label}] 429 rate limited`)
+        return null
+      }
+
+      const transient = res.status >= 500
       if (!transient || attempt === MAX_RETRIES) {
         if (transient) console.warn(`[${opts.label}] ${res.status} after retries`)
         return null
       }
 
-      const retryAfter = Number(res.headers.get("retry-after"))
-      const waitMs =
-        Number.isFinite(retryAfter) && retryAfter > 0
-          ? retryAfter * 1000
-          : RETRY_BASE_DELAYS_MS[attempt]
-      await sleep(waitMs + Math.floor(Math.random() * 250))
+      await sleep(RETRY_BASE_DELAYS_MS[attempt] + Math.floor(Math.random() * 250))
     } catch (error) {
       if (attempt === MAX_RETRIES) {
         console.error(`[${opts.label}] request failed:`, error)
@@ -118,7 +131,7 @@ type FmpDailyBar = {
 
 function fmpUrl(path: string, params: Record<string, string>): string | null {
   const apiKey = process.env.FMP_API_KEY
-  if (!apiKey) return null
+  if (!apiKey || fmpRateLimited()) return null
   const query = new URLSearchParams({ ...params, apikey: apiKey })
   return `${FMP_BASE_URL}${path}?${query}`
 }
@@ -129,6 +142,7 @@ async function fetchFmpDailyWindow(ticker: string, date: string): Promise<PriceB
   const rows = await fetchJson<FmpDailyBar[]>(url, {
     revalidate: HISTORY_REVALIDATE_SECONDS,
     label: "fmp",
+    onRateLimit: noteFmpRateLimit,
   })
   if (!rows?.length) return []
   return rows
@@ -150,6 +164,7 @@ export async function getDailyCloses(
     const rows = await fetchJson<FmpDailyBar[]>(url, {
       revalidate: HISTORY_REVALIDATE_SECONDS,
       label: "fmp",
+      onRateLimit: noteFmpRateLimit,
     })
     if (rows?.length) {
       return rows
@@ -237,6 +252,7 @@ export async function getCompanyProfile(ticker: string): Promise<CompanyProfile 
   const rows = await fetchJson<FmpProfile[]>(url, {
     revalidate: HISTORY_REVALIDATE_SECONDS,
     label: "fmp-profile",
+    onRateLimit: noteFmpRateLimit,
   })
   const p = rows?.[0]
   if (!p) return null

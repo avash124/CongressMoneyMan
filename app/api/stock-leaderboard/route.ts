@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getHoldingsLeaderboard, getStockPerformance } from "@/lib/stockLeaderboard"
 export const revalidate = 1800
+export const maxDuration = 300
 
 export async function GET() {
   try {

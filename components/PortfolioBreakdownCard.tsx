@@ -1,17 +1,15 @@
 "use client"
-
-import { Pie, PieChart, Tooltip } from "recharts"
+import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import type { AssetAllocation } from "@/types/member"
-
 const COLORS = [
-  "#2563eb", 
-  "#16a34a", 
+  "#2563eb",
+  "#16a34a",
   "#f59e0b", 
   "#dc2626", 
   "#7c3aed", 
   "#0891b2", 
   "#db2777", 
-  "#65a30d", 
+  "#65a30d",
   "#ea580c", 
   "#475569", 
 ]
@@ -28,7 +26,6 @@ export default function PortfolioBreakdownCard({
   allocations: AssetAllocation[]
 }) {
   const total = allocations.reduce((sum, a) => sum + a.value, 0)
-
   const chartData = allocations.map((a, i) => ({
     ...a,
     fill: COLORS[i % COLORS.length],
@@ -47,10 +44,7 @@ export default function PortfolioBreakdownCard({
         <p className="text-gray-500">No portfolio data available.</p>
       ) : (
         <div className="flex flex-col items-center gap-8 lg:flex-row lg:gap-12">
-          {/* Donut chart with a centered total. Rendered at a fixed pixel size
-              (matching the h-64/w-64 box) instead of ResponsiveContainer, whose
-              height="100%" can't be measured on the first paint and logs a
-              width(-1)/height(-1) warning. */}
+          {}
           <div className="relative h-64 w-64 shrink-0">
             <PieChart width={256} height={256}>
               <Pie

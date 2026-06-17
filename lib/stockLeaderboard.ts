@@ -11,18 +11,17 @@ import { getCompanyProfile, getDailyCloses, type CompanyProfile } from "./prices
 import { classifyTransaction, formatTradeRange, parseTradeRange } from "./quiver"
 import { categorizeIndustry } from "@/app/api/member/[id]/industryClassifier"
 import { staticProfile } from "./sectorMap"
-
-// v3: sectors resolved via provider sector -> keyword classifier (no "Unknown").
 export const HOLDINGS_KEY = "stock-holdings-v4"
-export const PERFORMANCE_KEY = "stock-performance"
+export const PERFORMANCE_KEY = "stock-performance-v4"
 const HOLDINGS_TTL_SECONDS = 6 * 60 * 60
 const PERFORMANCE_TTL_SECONDS = 36 * 60 * 60
 
 const HOLDINGS_TOP_N = 120
-const PERF_UNIVERSE_SIZE = 25
-const PERF_TOP_N = 30
+const PERF_UNIVERSE_SIZE = 400
+const PERF_TOP_N = 400
 const MAX_BUY_DATES_PER_TICKER = 12
 const PERF_LOOKBACK_MS = 3 * 365 * 24 * 60 * 60 * 1000
+const STALE_PRICE_MS = 14 * 24 * 60 * 60 * 1000
 const PRICE_CONCURRENCY = 3
 const PROFILE_CONCURRENCY = 4
 export type HoldingPosition = { ticker: string; value: number }
@@ -60,6 +59,8 @@ export type TickerHolders = {
 
 export type PerformanceRow = {
   ticker: string
+  name: string
+  sector: string
   gainPct: number
   estGain: number
   boughtValue: number
@@ -67,6 +68,7 @@ export type PerformanceRow = {
   houseCount: number
   senateCount: number
 }
+type PerformanceCore = Omit<PerformanceRow, "name" | "sector">
 
 const isSenate = (chamber: string | null | undefined): boolean =>
   (chamber ?? "").toLowerCase().includes("senate")
@@ -108,34 +110,26 @@ export function buildHoldingsLeaderboard(
     .sort((l, r) => r.totalValue - l.totalValue)
     .slice(0, HOLDINGS_TOP_N)
 }
-// Prefer the data provider's clean sector; otherwise fall back to the keyword
-// classifier over the company name + granular industry so nothing lands on
-// "Unknown" (worst case is the classifier's "Other").
+
 function resolveSector(profile: CompanyProfile | null): string {
   if (!profile) return "Other"
   if (profile.sector) return profile.sector
   const text = `${profile.name} ${profile.industry}`.trim()
   return text ? categorizeIndustry(text) : "Other"
 }
+async function resolveProfile(ticker: string): Promise<{ name: string; sector: string }> {
+  const known = staticProfile(ticker)
+  if (known) return { name: known.name, sector: known.sector }
+  const profile = await getCompanyProfile(ticker).catch(() => null)
+  return { name: profile?.name || ticker, sector: resolveSector(profile) }
+}
 
 async function enrichHoldings(
   rows: { ticker: string; totalValue: number }[]
 ): Promise<HoldingsRow[]> {
   return mapWithConcurrency(rows, PROFILE_CONCURRENCY, async (row) => {
-    // Curated map first: correct name + sector with no network call, so the
-    // common holdings are always classified even if the profile API is down.
-    const known = staticProfile(row.ticker)
-    if (known) {
-      return { ticker: row.ticker, name: known.name, totalValue: row.totalValue, sector: known.sector }
-    }
-
-    const profile = await getCompanyProfile(row.ticker).catch(() => null)
-    return {
-      ticker: row.ticker,
-      name: profile?.name || row.ticker,
-      totalValue: row.totalValue,
-      sector: resolveSector(profile),
-    }
+    const { name, sector } = await resolveProfile(row.ticker)
+    return { ticker: row.ticker, name, totalValue: row.totalValue, sector }
   })
 }
 
@@ -283,7 +277,7 @@ function aggregateBuys(trades: DbTrade[]): TickerBuys[] {
   return [...byTicker.values()].filter((a) => a.weightByDate.size > 0)
 }
 
-async function performanceForTicker(buys: TickerBuys): Promise<PerformanceRow | null> {
+async function performanceForTicker(buys: TickerBuys): Promise<PerformanceCore | null> {
   const dates = [...buys.weightByDate.entries()]
     .sort((a, b) => Date.parse(b[0]) - Date.parse(a[0]))
     .slice(0, MAX_BUY_DATES_PER_TICKER)
@@ -295,7 +289,10 @@ async function performanceForTicker(buys: TickerBuys): Promise<PerformanceRow | 
   const series = await getDailyCloses(buys.ticker, earliest)
   if (series.length === 0) return null
 
-  const currentPrice = series[series.length - 1].close
+  const lastBar = series[series.length - 1]
+  if (Date.now() - Date.parse(lastBar.date) > STALE_PRICE_MS) return null
+
+  const currentPrice = lastBar.close
   if (!(currentPrice > 0)) return null
 
   const priceOn = (day: string): number | null => {
@@ -330,18 +327,31 @@ async function performanceForTicker(buys: TickerBuys): Promise<PerformanceRow | 
 }
 
 export async function refreshStockPerformance(): Promise<PerformanceRow[]> {
-  const trades = await getAllTrades()
+  const [trades, holdings] = await Promise.all([getAllTrades(), getHoldingsFromDb()])
+
+  // Only rank stocks members currently hold — a bought-then-sold ticker has no
+  // holders, so its ownership view would be empty. Skip the filter if holdings
+  // haven't synced yet, so a missing table can't blank the whole board.
+  const heldTickers = new Set<string>()
+  for (const h of holdings) {
+    const ticker = h.ticker?.trim().toUpperCase()
+    if (ticker && Number(h.value) > 0) heldTickers.add(ticker)
+  }
+
   const universe = aggregateBuys(trades)
+    .filter((b) => heldTickers.size === 0 || heldTickers.has(b.ticker))
     .sort((l, r) => r.boughtValue - l.boughtValue)
     .slice(0, PERF_UNIVERSE_SIZE)
 
-  const rows = (await mapWithConcurrency(universe, PRICE_CONCURRENCY, performanceForTicker))
-    .filter((row): row is PerformanceRow => row !== null)
+  const computed = (await mapWithConcurrency(universe, PRICE_CONCURRENCY, performanceForTicker))
+    .filter((row): row is PerformanceCore => row !== null)
     .sort((l, r) => r.gainPct - l.gainPct)
     .slice(0, PERF_TOP_N)
+  const rows = await mapWithConcurrency(computed, PROFILE_CONCURRENCY, async (row) => {
+    const { name, sector } = await resolveProfile(row.ticker)
+    return { ...row, name, sector }
+  })
 
-  // An empty result means every price lookup failed (rate limits), not that
-  // nothing performed — don't overwrite the last good board with a blank one.
   if (rows.length > 0) {
     await setCache(PERFORMANCE_KEY, rows, PERFORMANCE_TTL_SECONDS)
   }
@@ -349,5 +359,7 @@ export async function refreshStockPerformance(): Promise<PerformanceRow[]> {
 }
 
 export async function getStockPerformance(): Promise<PerformanceRow[]> {
-  return (await getCache<PerformanceRow[]>(PERFORMANCE_KEY)) ?? []
+  const cached = await getCache<PerformanceRow[]>(PERFORMANCE_KEY)
+  if (cached && cached.length > 0) return cached
+  return refreshStockPerformance()
 }
