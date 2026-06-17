@@ -61,6 +61,7 @@ width={128}
 height={128}
 className="h-full w-full object-cover object-top"
 priority
+unoptimized
 />
 ) : (
 <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-gray-400">
