@@ -1,24 +1,12 @@
--- CongressMoneyMan persistence schema.
---
--- Apply once via the Supabase SQL editor (or `supabase db push`). The app reads
--- and writes these tables through lib/db.ts using the service-role key, so Row
--- Level Security can stay enabled with no policies — server access bypasses it.
---
--- `bioguide_id` is the logical key across tables; there are intentionally NO
--- cross-table foreign keys so the ETL jobs can run in any order.
-
--- One row per current House/Senate member.
 create table if not exists members (
   bioguide_id  text primary key,
   name         text not null,
-  party        text not null,             -- 'D' | 'R' | 'I'
+  party        text not null,             
   state        text not null,
-  district     text,                       -- null for senators
-  chamber      text not null,             -- 'house' | 'senate'
+  district     text,                       
+  chamber      text not null,             
   last_updated timestamptz not null default now()
 );
-
--- One row per disclosed congressional trade (keyed on Quiver's UniqueID).
 create table if not exists trades (
   trade_id         text primary key,
   bioguide_id      text not null,
@@ -58,7 +46,6 @@ create table if not exists fec_candidates (
   fetched_at    timestamptz not null default now()
 );
 
--- Per-donor aggregated PAC contributions (top donors + industry classification).
 create table if not exists pac_donations (
   id          bigint generated always as identity primary key,
   bioguide_id text not null,

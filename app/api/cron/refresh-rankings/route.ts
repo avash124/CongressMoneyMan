@@ -18,8 +18,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    // One interleaved fan-out across both chambers so neither starves the shared
-    // Quiver rate budget (see refreshAllRankings).
     const { house, senate } = await refreshAllRankings(apiKey)
 
     return NextResponse.json({

@@ -4,6 +4,7 @@ import {
   syncTrades,
   backfillTrades,
   syncRankings,
+  syncStockPerformance,
   syncFec,
 } from "../lib/sync"
 
@@ -21,6 +22,7 @@ const jobs: Job[] = [
   { name: "trades", intervalMs: 5 * MINUTE, run: syncTrades },
   { name: "trades-backfill", intervalMs: 24 * HOUR, run: backfillTrades },
   { name: "rankings", intervalMs: 60 * MINUTE, run: syncRankings },
+  { name: "stock-performance", intervalMs: 24 * HOUR, run: syncStockPerformance },
   { name: "fec", intervalMs: 24 * HOUR, run: syncFec },
 ]
 

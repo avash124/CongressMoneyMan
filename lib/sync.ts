@@ -8,6 +8,7 @@ import {
 import { fetchFecTotals, fetchPacDonations } from "./fec"
 import { resolveFecCandidate, currentCycle, aggregateDonors } from "./profile"
 import { refreshAllRankings, mapWithConcurrency } from "./rankings"
+import { refreshStockPerformance } from "./stockLeaderboard"
 import {
   upsertMembers,
   upsertTrades,
@@ -145,11 +146,6 @@ export async function syncTrades(): Promise<{ fetched: number; persisted: number
   console.log(`[sync] syncTrades: resolved ${resolved} trade(s) to a bioguide by name`)
   return { fetched: trades.length, persisted: rows.length }
 }
-
-// Full multi-year history (Quiver's bulk endpoint, ~2020→present). Upsert-only
-// and idempotent — unified trade ids mean these rows merge with the 15-minute
-// live sync instead of duplicating. Run on a slow cadence (daily); the live
-// `syncTrades` keeps the most-recent disclosures fresh between runs.
 export async function backfillTrades(): Promise<{
   fetched: number
   persisted: number
@@ -172,6 +168,15 @@ export async function syncRankings(): Promise<{ house: number; senate: number }>
   const apiKey = resolveCongressApiKey()
   const { house, senate } = await refreshAllRankings(apiKey)
   return { house: house.byNetWorth.length, senate: senate.byNetWorth.length }
+}
+
+// Best-performing-stocks leaderboard (Congress P/L on disclosed buys). Reads the
+// persisted trades + price history, so it has no Quiver fan-out of its own and
+// runs on a slow cadence. The holdings leaderboard has no job here — it is filled
+// as a side effect of refreshAllRankings (syncRankings).
+export async function syncStockPerformance(): Promise<{ stocks: number }> {
+  const rows = await refreshStockPerformance()
+  return { stocks: rows.length }
 }
 const FEC_CONCURRENCY = 4
 const FEC_DELAY_MS = 150

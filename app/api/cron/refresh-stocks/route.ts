@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { backfillTrades } from "@/lib/sync"
+import { syncStockPerformance } from "@/lib/sync"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
@@ -13,11 +13,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await backfillTrades()
-    return NextResponse.json({ ok: true, ...result, syncedAt: new Date().toISOString() })
+    const result = await syncStockPerformance()
+    return NextResponse.json({ ok: true, ...result, refreshedAt: new Date().toISOString() })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to backfill trades"
-    console.error("[cron/backfill-trades]", message)
+    const message = error instanceof Error ? error.message : "Failed to refresh stock performance"
+    console.error("[cron/refresh-stocks]", message)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
