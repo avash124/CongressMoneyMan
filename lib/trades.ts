@@ -1,11 +1,3 @@
-// Trade detail loader for the per-trade stock page.
-//
-// Joins one congressional trade (from Quiver) to its day-by-day price history
-// (from Massive): a snapshot on the purchase day, the latest session ("today"),
-// and — when the position was later sold — the sale day plus an estimated
-// profit/loss range. Buy/sell pairing is best-effort (the feed never links the
-// two filings); see findMatchingSale in lib/quiver.
-
 import {
   classifyTransaction,
   fetchAllCongressTrades,
@@ -22,12 +14,8 @@ export type TradeLeg = { date: string; range: string; transactionType: string }
 export type ProfitLoss = {
   buyPrice: number
   exitPrice: number
-  // "sale" when the position was sold (realized); "current" when still held
-  // (unrealized, marked against the latest close).
   exitBasis: "sale" | "current"
   pctChange: number
-  // Estimated dollar P/L bounds, derived by applying the percentage move to the
-  // disclosed purchase amount range.
   plLow: number
   plHigh: number
 }
@@ -89,10 +77,6 @@ function computeProfitLoss(
 export async function loadTradeDetail(id: string): Promise<TradeDetail | null> {
   const apiKey = process.env.QUIVER_API_KEY
   if (!apiKey) return null
-
-  // The id's first segment is the member's bioguide (see syntheticTradeId), so
-  // resolve against that member's full history rather than only the recent live
-  // feed — profile links can point at years-old disclosures the live feed drops.
   const bioguide = id.split("|")[0] ?? ""
   let all: RawCongressTrade[]
   try {
@@ -106,8 +90,6 @@ export async function loadTradeDetail(id: string): Promise<TradeDetail | null> {
 
   const clicked = all.find((t) => String(t.UniqueID) === id)
   if (!clicked) return null
-
-  // The page is purchase-centric. Opening a sale resolves back to its prior buy.
   const kind = classifyTransaction(clicked.Transaction)
   const buyTrade = kind === "sell" ? findMatchingPurchase(all, clicked) : clicked
   const sellTrade = kind === "sell" ? clicked : findMatchingSale(all, clicked)

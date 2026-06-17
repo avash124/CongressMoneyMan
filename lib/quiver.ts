@@ -175,14 +175,6 @@ type RawQuiverApiTrade = {
   Description?: string | null
 }
 
-// Stable per-filing identity. Deliberately excludes `Range`: the live feed
-// carries a formatted range ("$1,001 - $15,000") while the bulk-history feed
-// only carries the numeric `Amount`/`Trade_Size_USD` lower bound — and the
-// range is fully derivable from that amount. Keeping `Range` out means the same
-// trade from either feed collapses to one id, so the full-history backfill and
-// the 15-minute live sync never produce duplicate rows for the same disclosure.
-// The first segment is always the bioguide id, which `loadTradeDetail` relies on
-// to resolve a trade back to its member's history.
 function syntheticTradeId(raw: RawQuiverApiTrade): string {
   return [
     raw.BioGuideID ?? "",
@@ -263,15 +255,6 @@ export async function fetchAllCongressTrades(
   return trades
 }
 
-// ---------------------------------------------------------------------------
-// Full historical backfill (bulk endpoint)
-//
-// `/beta/live/congresstrading` is capped at the most-recent ~1000 disclosures
-// across all of Congress (~1 year), which is why member profiles looked
-// truncated. `/beta/bulk/congresstrading` paginates the entire history (back to
-// ~2020), so the backfill job can persist every member's complete record.
-// ---------------------------------------------------------------------------
-
 type RawQuiverBulkTrade = {
   Ticker?: string
   TickerType?: string
@@ -309,21 +292,14 @@ function normalizeBulkTrade(raw: RawQuiverBulkTrade): RawCongressTrade {
     Transaction: raw.Transaction,
     Date: raw.Traded,
     Traded: raw.Traded,
-    // No formatted range in the bulk feed — it is reconstructed from the amount
-    // on read (see formatTradeRange).
     Range: undefined,
     Trade_Size_USD: raw.Trade_Size_USD,
     ReportDate: raw.Filed,
   }
 }
-
 const BULK_PAGE_SIZE = 1000
 const BULK_MAX_PAGES = 200
 
-// Fetch one bulk page. The natural end of the dataset is a short/empty page, so
-// transient 429/5xx responses are retried with backoff (a single blip must not
-// truncate the multi-year history). Returns null only after retries are
-// exhausted, or for a non-array body — the caller then stops.
 async function fetchBulkPage(
   apiKey: string,
   page: number
@@ -361,9 +337,6 @@ export async function fetchBulkCongressTrades(
   return [...new Map(all.map((t) => [t.UniqueID, t])).values()]
 }
 
-// A single member's full trade history, read from the persisted backfill. Falls
-// back to filtering the recent live feed when the DB is empty/unavailable so the
-// per-trade and profile pages still work before the first backfill runs.
 export async function fetchMemberCongressTrades(
   bioguideId: string,
   apiKey: string
@@ -405,8 +378,6 @@ export function findMatchingSale(
   )
 }
 
-// Inverse pairing for when a sale is opened directly: the latest purchase of the
-// same ticker by the same member dated on/before the sale.
 export function findMatchingPurchase(
   all: RawCongressTrade[],
   sale: RawCongressTrade
@@ -428,8 +399,6 @@ export function findMatchingPurchase(
   )
 }
 
-// Parse a disclosure range like "$1,001 - $15,000" into numeric bounds. A single
-// value collapses to low === high.
 export function parseTradeRange(range?: string): { low: number; high: number } | null {
   if (!range) return null
   const nums = range.replace(/,/g, "").match(/\d+(?:\.\d+)?/g)

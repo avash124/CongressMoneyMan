@@ -5,6 +5,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/refresh-stocks",
+      "schedule": "15 8 * * *"
+    },
+    {
       "path": "/api/cron/sync-trades",
       "schedule": "*/15 * * * *"
     },

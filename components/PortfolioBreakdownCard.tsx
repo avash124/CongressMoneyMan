@@ -3,18 +3,17 @@
 import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import type { AssetAllocation } from "@/types/member"
 
-// Distinct, color-blind-friendly palette cycled across asset-type slices.
 const COLORS = [
-  "#2563eb", // blue
-  "#16a34a", // green
-  "#f59e0b", // amber
-  "#dc2626", // red
-  "#7c3aed", // violet
-  "#0891b2", // cyan
-  "#db2777", // pink
-  "#65a30d", // lime
-  "#ea580c", // orange
-  "#475569", // slate
+  "#2563eb", 
+  "#16a34a", 
+  "#f59e0b", 
+  "#dc2626", 
+  "#7c3aed", 
+  "#0891b2", 
+  "#db2777", 
+  "#65a30d", 
+  "#ea580c", 
+  "#475569", 
 ]
 
 const usd = new Intl.NumberFormat("en-US", {
@@ -30,8 +29,6 @@ export default function PortfolioBreakdownCard({
 }) {
   const total = allocations.reduce((sum, a) => sum + a.value, 0)
 
-  // Recharts v3 reads each slice's color from a `fill` on the datum (the old
-  // per-slice <Cell> child is deprecated).
   const chartData = allocations.map((a, i) => ({
     ...a,
     fill: COLORS[i % COLORS.length],
@@ -50,10 +47,9 @@ export default function PortfolioBreakdownCard({
         <p className="text-gray-500">No portfolio data available.</p>
       ) : (
         <div className="flex flex-col items-center gap-8 lg:flex-row lg:gap-12">
-          {/* Donut chart with a centered total. Fixed pixel size so
-              ResponsiveContainer always measures a real width/height. */}
+          {}
           <div className="relative h-64 w-64 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width={256} height={256}>
               <PieChart>
                 <Pie
                   data={chartData}
@@ -77,7 +73,7 @@ export default function PortfolioBreakdownCard({
             </div>
           </div>
 
-          {/* Per-category legend with dollar value and share */}
+          {}
           <ul className="w-full flex-1 space-y-3">
             {allocations.map((a, i) => (
               <li key={a.category} className="flex items-center gap-3">

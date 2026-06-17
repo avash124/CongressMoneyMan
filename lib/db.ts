@@ -31,6 +31,15 @@ export type DbPortfolio = {
   stock_holdings: number | null
 }
 
+export type DbHolding = {
+  bioguide_id: string
+  member_name: string | null
+  party: string | null
+  chamber: string | null
+  ticker: string
+  value: number
+}
+
 export type DbFecCandidate = {
   bioguide_id: string
   candidate_id: string | null
@@ -156,8 +165,6 @@ export async function upsertMembers(rows: DbMember[]): Promise<void> {
   }
 }
 
-// The most-recently-filed slice, for the live-trades page. Bounded so the full
-// multi-year backfill in this table never loads whole into the live UI / cache.
 export async function getRecentTradesFromDb(limit = 1000): Promise<DbTrade[]> {
   const db = await getDb()
   if (!db) return []
@@ -178,8 +185,6 @@ export async function getRecentTradesFromDb(limit = 1000): Promise<DbTrade[]> {
   }
 }
 
-// One member's complete trade history (indexed on bioguide_id). Paginated
-// because heavy traders can exceed the 1000-row PostgREST cap.
 export async function getTradesByBioguide(bioguideId: string): Promise<DbTrade[]> {
   const db = await getDb()
   if (!db) return []
@@ -206,13 +211,10 @@ export async function getTradesByBioguide(bioguideId: string): Promise<DbTrade[]
   return all
 }
 
-// Wipe the trades table. Only used for the one-time migration off the old
-// id scheme before the first unified backfill; the scheduled backfill upserts.
 export async function deleteAllTrades(): Promise<void> {
   const db = await getDb()
   if (!db) return
   try {
-    // PostgREST requires a filter on delete; trade_id is never empty.
     const { error } = await db.from("trades").delete().neq("trade_id", "")
     if (error) console.error("[db] deleteAllTrades:", error.message)
   } catch (error) {
@@ -224,9 +226,6 @@ export async function upsertTrades(rows: DbTrade[]): Promise<void> {
   if (rows.length === 0) return
   const db = await getDb()
   if (!db) return
-  // trade_id is synthesized from a filing's fields, so identical filings can
-  // collide within one feed. Collapse duplicates (last wins) so a single upsert
-  // batch never targets the same conflict key twice — Postgres rejects that.
   const deduped = [...new Map(rows.map((r) => [r.trade_id, r])).values()]
   try {
     // Chunk so a large live feed stays under the request payload limit.
@@ -270,6 +269,107 @@ export async function upsertPortfolios(rows: DbPortfolio[]): Promise<void> {
     if (error) console.error("[db] upsertPortfolios:", error.message)
   } catch (error) {
     console.error("[db] upsertPortfolios threw:", error)
+  }
+}
+
+export async function getAllTrades(): Promise<DbTrade[]> {
+  const db = await getDb()
+  if (!db) return []
+  const pageSize = 1000
+  const all: DbTrade[] = []
+  try {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("trades")
+        .select("*")
+        .range(from, from + pageSize - 1)
+      if (error) {
+        console.error("[db] getAllTrades:", error.message)
+        break
+      }
+      const rows = (data as DbTrade[]) ?? []
+      all.push(...rows)
+      if (rows.length < pageSize) break
+    }
+  } catch (error) {
+    console.error("[db] getAllTrades threw:", error)
+  }
+  return all
+}
+
+export async function getHoldingsFromDb(): Promise<DbHolding[]> {
+  const db = await getDb()
+  if (!db) return []
+  const pageSize = 1000
+  const all: DbHolding[] = []
+  try {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("portfolio_holdings")
+        .select("*")
+        .range(from, from + pageSize - 1)
+      if (error) {
+        console.error("[db] getHoldingsFromDb:", error.message)
+        break
+      }
+      const rows = (data as DbHolding[]) ?? []
+      all.push(...rows)
+      if (rows.length < pageSize) break
+    }
+  } catch (error) {
+    console.error("[db] getHoldingsFromDb threw:", error)
+  }
+  return all
+}
+export async function getHoldingsByTicker(ticker: string): Promise<DbHolding[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db
+      .from("portfolio_holdings")
+      .select("*")
+      .eq("ticker", ticker)
+    if (error) {
+      console.error(`[db] getHoldingsByTicker(${ticker}):`, error.message)
+      return []
+    }
+    return (data as DbHolding[]) ?? []
+  } catch (error) {
+    console.error(`[db] getHoldingsByTicker(${ticker}) threw:`, error)
+    return []
+  }
+}
+
+export async function replaceHoldingsForMembers(
+  memberIds: string[],
+  rows: DbHolding[]
+): Promise<void> {
+  if (memberIds.length === 0) return
+  const db = await getDb()
+  if (!db) return
+  const stamped = [
+    ...new Map(rows.map((r) => [`${r.bioguide_id}|${r.ticker}`, r])).values(),
+  ].map((r) => ({ ...r, fetched_at: new Date().toISOString() }))
+  try {
+    for (const idBatch of chunk(memberIds, 200)) {
+      const { error } = await db
+        .from("portfolio_holdings")
+        .delete()
+        .in("bioguide_id", idBatch)
+      if (error) {
+        console.error("[db] replaceHoldingsForMembers delete:", error.message)
+        return
+      }
+    }
+    for (const batch of chunk(stamped, 500)) {
+      const { error } = await db.from("portfolio_holdings").insert(batch)
+      if (error) {
+        console.error("[db] replaceHoldingsForMembers insert:", error.message)
+        return
+      }
+    }
+  } catch (error) {
+    console.error("[db] replaceHoldingsForMembers threw:", error)
   }
 }
 

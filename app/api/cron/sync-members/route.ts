@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server"
 import { syncMembers } from "@/lib/sync"
-
-// Daily ETL: snapshot the current House + Senate rosters into the `members` table.
-// Cheap (3 Congress.gov pages, no fan-out). Members change rarely.
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
