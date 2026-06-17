@@ -139,26 +139,37 @@ export const loadTrades = cache(async (id: string): Promise<Trade[]> => {
     return []
   }
 })
-function normalizeAssetCategory(raw: string | null | undefined): string {
-  const v = (raw ?? "").trim().toLowerCase()
-  if (!v) return "Other"
-  if (v.includes("etf") || v.includes("exchange-traded") || v.includes("exchange traded"))
-    return "ETFs"
-  if (v.includes("crypto")) return "Crypto"
-  if (v.includes("option")) return "Options"
-  if (v.includes("muni")) return "Municipal Bonds"
-  if (v.includes("bond") || v.includes("debt") || v.includes("note")) return "Bonds"
-  if (v.includes("trust")) return "Trusts"
-  if (v.includes("mutual") || v.includes("fund")) return "Mutual Funds"
-  if (
-    v.includes("stock") ||
-    v === "st" ||
-    v.includes("equity") ||
-    v.includes("common") ||
-    v.includes("share")
-  )
-    return "Stocks"
-  return raw!.trim().replace(/\b\w/g, (c) => c.toUpperCase())
+// Ordered most-specific first; the first pattern to hit the combined
+// asset-type + description text wins. The description is scanned too because the
+// Quiver `AssetType`/`TickerType` field is usually just "ST"/empty, so real
+// estate, crypto, ETFs, etc. are only recoverable from the asset name. Stocks
+// sits below the asset classes that also trade like equities (ETFs/REITs) and
+// above Trusts so a bank named "...Trust" stays a stock — a heuristic estimate
+// matching the card's "estimated holdings" framing.
+const ASSET_CATEGORY_RULES: Array<[category: string, pattern: RegExp]> = [
+  ["Real Estate", /real estate|real property|\breit\b|realty|rental propert|land trust/],
+  ["Crypto", /crypto|bitcoin|ethereum|\bbtc\b|\beth\b|digital asset|stablecoin/],
+  ["Options", /\boption\b|stock option|\bop\b|warrant/],
+  ["ETFs", /\betf\b|\betn\b|\betp\b|exchange[- ]traded/],
+  ["Municipal Bonds", /muni/],
+  ["Bonds", /\bbond\b|debenture|fixed income|promissory note|treasury (bill|note|bond)/],
+  ["Mutual Funds", /mutual fund|index fund|\bfund\b/],
+  ["Stocks", /\bstock\b|\bst\b|equity|common|\bshares?\b/],
+  ["Trusts", /\btrust\b/],
+]
+
+function normalizeAssetCategory(
+  type: string | null | undefined,
+  description?: string | null
+): string {
+  const text = `${type ?? ""} ${description ?? ""}`.toLowerCase()
+  if (!text.trim()) return "Other"
+  for (const [category, pattern] of ASSET_CATEGORY_RULES) {
+    if (pattern.test(text)) return category
+  }
+  // Unknown but non-empty type still gets its own labelled slice.
+  const raw = (type ?? "").trim()
+  return raw ? raw.replace(/\b\w/g, (c) => c.toUpperCase()) : "Other"
 }
 
 function disclosureMidpoint(
@@ -206,7 +217,7 @@ export const loadPortfolioBreakdown = cache(
       return breakdownFromPositions(
         rows.map((r) => ({
           ticker: r.ticker || r.asset_name || "Unknown",
-          category: normalizeAssetCategory(r.asset_type),
+          category: normalizeAssetCategory(r.asset_type, r.asset_name),
           direction: classifyTransaction(r.transaction_type ?? undefined),
           value: disclosureMidpoint(r.range_text, r.trade_size_usd),
         }))
@@ -222,7 +233,7 @@ export const loadPortfolioBreakdown = cache(
           .filter((t) => t.Bioguide === id)
           .map((t) => ({
             ticker: t.Ticker || t.AssetDescription || "Unknown",
-            category: normalizeAssetCategory(t.AssetType),
+            category: normalizeAssetCategory(t.AssetType, t.AssetDescription),
             direction: classifyTransaction(t.Transaction),
             value: disclosureMidpoint(
               t.Range ?? null,
@@ -301,20 +312,31 @@ async function loadFecDonations(
   if (stored.length > 0) return donationsFromRows(stored)
 
   const apiKey = process.env.FEC_API_KEY
-  const ref = await resolveRef()
-  if (!apiKey || !ref) return EMPTY_DONATIONS
+  if (!apiKey) return EMPTY_DONATIONS
 
-  const { topDonors, allDonations } = await fetchPacDonations(ref.committeeIds, apiKey)
-  const cycle = currentCycle()
-  const rows: DbPacDonation[] = aggregateDonors(allDonations).map((d) => ({
-    bioguide_id: id,
-    pac_name: d.pacName,
-    amount: d.amount,
-    cycle,
-  }))
-  writeBack(() => replacePacDonations(id, rows))
+  // A failed FEC lookup must degrade to "no donations" rather than throw — an
+  // uncaught rejection here blanks the cards instead of rendering their empty
+  // state (members usually hit the DB branch above; senators fall through to the
+  // live API, so the failure surfaced on senator profiles).
+  try {
+    const ref = await resolveRef()
+    if (!ref) return EMPTY_DONATIONS
 
-  return { pacDonations: topDonors, topIndustries: computeTopIndustries(allDonations) }
+    const { topDonors, allDonations } = await fetchPacDonations(ref.committeeIds, apiKey)
+    const cycle = currentCycle()
+    const rows: DbPacDonation[] = aggregateDonors(allDonations).map((d) => ({
+      bioguide_id: id,
+      pac_name: d.pacName,
+      amount: d.amount,
+      cycle,
+    }))
+    writeBack(() => replacePacDonations(id, rows))
+
+    return { pacDonations: topDonors, topIndustries: computeTopIndustries(allDonations) }
+  } catch (error) {
+    console.warn(`[profile] loadFecDonations(${id}) failed:`, error)
+    return EMPTY_DONATIONS
+  }
 }
 
 function principalCommittees(candidate: FecCandidate): string[] {

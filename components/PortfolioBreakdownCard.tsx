@@ -46,20 +46,18 @@ export default function PortfolioBreakdownCard({
         <div className="flex flex-col items-center gap-8 lg:flex-row lg:gap-12">
           {}
           <div className="relative h-64 w-64 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="value"
-                  nameKey="category"
-                  innerRadius="62%"
-                  outerRadius="100%"
-                  paddingAngle={1.5}
-                  stroke="none"
-                />
-                <Tooltip formatter={(value) => usd.format(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
+            <PieChart width={256} height={256}>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="category"
+                innerRadius="62%"
+                outerRadius="100%"
+                paddingAngle={1.5}
+                stroke="none"
+              />
+              <Tooltip formatter={(value) => usd.format(Number(value))} />
+            </PieChart>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xs uppercase tracking-wide text-gray-400">
                 Total
