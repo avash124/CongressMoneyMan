@@ -394,6 +394,31 @@ export async function getFecCandidateFromDb(
   }
 }
 
+export async function getAllFecCandidates(): Promise<DbFecCandidate[]> {
+  const db = await getDb()
+  if (!db) return []
+  const pageSize = 1000
+  const all: DbFecCandidate[] = []
+  try {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("fec_candidates")
+        .select("*")
+        .range(from, from + pageSize - 1)
+      if (error) {
+        console.error("[db] getAllFecCandidates:", error.message)
+        break
+      }
+      const rows = (data as DbFecCandidate[]) ?? []
+      all.push(...rows)
+      if (rows.length < pageSize) break
+    }
+  } catch (error) {
+    console.error("[db] getAllFecCandidates threw:", error)
+  }
+  return all
+}
+
 export async function upsertFecCandidate(row: DbFecCandidate): Promise<void> {
   const db = await getDb()
   if (!db) return
@@ -427,6 +452,52 @@ export async function getPacDonationsFromDb(
     console.error(`[db] getPacDonationsFromDb(${bioguideId}) threw:`, error)
     return []
   }
+}
+
+export async function getTopPacDonations(limit = 1000): Promise<DbPacDonation[]> {
+  const db = await getDb()
+  if (!db) return []
+  try {
+    const { data, error } = await db
+      .from("pac_donations")
+      .select("*")
+      .order("amount", { ascending: false })
+      .limit(limit)
+    if (error) {
+      console.error("[db] getTopPacDonations:", error.message)
+      return []
+    }
+    return (data as DbPacDonation[]) ?? []
+  } catch (error) {
+    console.error("[db] getTopPacDonations threw:", error)
+    return []
+  }
+}
+
+export async function getPacDonationsByName(pacName: string): Promise<DbPacDonation[]> {
+  const db = await getDb()
+  if (!db) return []
+  const pageSize = 1000
+  const all: DbPacDonation[] = []
+  try {
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("pac_donations")
+        .select("*")
+        .eq("pac_name", pacName)
+        .range(from, from + pageSize - 1)
+      if (error) {
+        console.error(`[db] getPacDonationsByName(${pacName}):`, error.message)
+        break
+      }
+      const rows = (data as DbPacDonation[]) ?? []
+      all.push(...rows)
+      if (rows.length < pageSize) break
+    }
+  } catch (error) {
+    console.error(`[db] getPacDonationsByName(${pacName}) threw:`, error)
+  }
+  return all
 }
 
 export async function replacePacDonations(
