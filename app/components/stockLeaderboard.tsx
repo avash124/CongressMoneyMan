@@ -488,16 +488,21 @@ function HoldingsTable({
   onSelect: (row: HoldingsRow) => void
 }) {
   const [sector, setSector] = useState<string>("All")
+  const [query, setQuery] = useState("")
 
   const sectors = useMemo(
     () => ["All", ...[...new Set(rows.map((r) => r.sector))].sort()],
     [rows]
   )
 
-  const filtered = useMemo(
-    () => (sector === "All" ? rows : rows.filter((r) => r.sector === sector)),
-    [rows, sector]
-  )
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return rows.filter((r) => {
+      if (sector !== "All" && r.sector !== sector) return false
+      if (!q) return true
+      return r.ticker.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)
+    })
+  }, [rows, sector, query])
 
   return (
     <section className="dashboard-card">
@@ -511,20 +516,29 @@ function HoldingsTable({
             full ownership and price breakdown.
           </p>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <span className="font-medium">Sector</span>
-          <select
-            value={sector}
-            onChange={(e) => setSector(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            {sectors.map((s) => (
-              <option key={s} value={s}>
-                {s === "All" ? "All sectors" : s}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search ticker or name"
+            className="w-52 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <span className="font-medium">Sector</span>
+            <select
+              value={sector}
+              onChange={(e) => setSector(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {sectors.map((s) => (
+                <option key={s} value={s}>
+                  {s === "All" ? "All sectors" : s}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="max-h-[40rem] overflow-auto">
@@ -538,7 +552,14 @@ function HoldingsTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row, index) => (
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-400">
+                  No stocks match your search.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((row, index) => (
               <tr
                 key={row.ticker}
                 onClick={() => onSelect(row)}
@@ -556,7 +577,8 @@ function HoldingsTable({
                   {formatCurrency(row.totalValue)}
                 </td>
               </tr>
-            ))}
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -643,12 +665,17 @@ function PerformanceTable({
   const [metric, setMetric] = useState<PerfMetric>("gainPct")
   const [direction, setDirection] = useState<SortDir>("desc")
   const [view, setView] = useState<PerfView>("gainers")
+  const [query, setQuery] = useState("")
   const sorted = useMemo(() => {
+    const q = query.trim().toLowerCase()
     const sign = direction === "desc" ? -1 : 1
     return rows
       .filter((r) => (view === "gainers" ? r.gainPct > 0 : r.gainPct < 0))
+      .filter(
+        (r) => !q || r.ticker.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)
+      )
       .sort((a, b) => sign * (a[metric] - b[metric]))
-  }, [rows, metric, direction, view])
+  }, [rows, metric, direction, view, query])
 
   const handleSort = (column: PerfMetric) => {
     if (column === metric) {
@@ -682,7 +709,16 @@ function PerformanceTable({
             amount, ranked.
           </p>
         </div>
-        <SegmentedToggle value={view} options={VIEW_OPTIONS} onChange={selectView} />
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search ticker or name"
+            className="w-52 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <SegmentedToggle value={view} options={VIEW_OPTIONS} onChange={selectView} />
+        </div>
       </div>
 
       <div className="max-h-[34rem] overflow-auto">

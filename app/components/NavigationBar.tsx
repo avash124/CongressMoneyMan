@@ -33,6 +33,10 @@ Trades
 Stocks
 </Link>
 
+<Link href="/PAC" className="hover:text-blue-600 transition">
+PAC
+</Link>
+
 </nav>
 
 </div>
