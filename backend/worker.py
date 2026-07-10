@@ -12,6 +12,7 @@ import time
 from app import config  # noqa: F401  (loads .env.local)
 from app.services.sync import (
     backfill_trades,
+    sync_disclosures,
     sync_fec,
     sync_members,
     sync_rankings,
@@ -34,6 +35,7 @@ JOBS = [
     {"name": "rankings", "interval": 60 * MINUTE, "run": sync_rankings},
     {"name": "stock-performance", "interval": 24 * HOUR, "run": sync_stock_performance},
     {"name": "fec", "interval": 24 * HOUR, "run": sync_fec},
+    {"name": "disclosures", "interval": 7 * 24 * HOUR, "run": sync_disclosures},
 ]
 
 _in_progress: set[str] = set()

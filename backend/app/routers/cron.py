@@ -15,6 +15,7 @@ from ..core.util import now_iso
 from ..services.rankings import refresh_all_rankings
 from ..services.sync import (
     backfill_trades,
+    sync_disclosures,
     sync_fec,
     sync_members,
     sync_stock_performance,
@@ -128,4 +129,19 @@ async def cron_sync_fec(request: Request):
     except Exception as error:
         message = str(error) or "Failed to sync FEC data"
         logger.error("sync-fec: %s", message)
+        return JSONResponse({"error": message}, status_code=500)
+
+
+@router.get("/api/cron/sync-disclosures")
+async def cron_sync_disclosures(request: Request):
+    denied = _unauthorized(request)
+    if denied:
+        return denied
+
+    try:
+        result = await sync_disclosures()
+        return {"ok": True, **result, "syncedAt": now_iso()}
+    except Exception as error:
+        message = str(error) or "Failed to sync disclosures"
+        logger.error("sync-disclosures: %s", message)
         return JSONResponse({"error": message}, status_code=500)

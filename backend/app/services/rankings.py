@@ -16,6 +16,7 @@ from ..config import require_congress_api_key
 from ..core.cache import get_cache, set_cache
 from ..core.db import get_portfolios_from_db, upsert_portfolios, write_back
 from ..core.util import map_with_concurrency, now_iso, single_flight
+from .disclosures import get_disclosure_net_worth
 from .stock_leaderboard import persist_holdings
 
 logger = logging.getLogger("rankings")
@@ -170,6 +171,49 @@ def _build_payload(rows: list[dict]) -> dict:
         "byStockHoldings": sorted(rows, key=_ranking_sort_key("stockHoldings")),
         "generatedAt": now_iso(),
     }
+
+
+async def _apply_disclosure_fallback(payload: dict) -> dict:
+    """Fill net-worth gaps from annual financial-disclosure estimates.
+
+    Quiver's live figure stays authoritative — the FD estimate only fills rows
+    where Quiver has none. Filled rows carry `netWorthSource: "fd"` and an
+    `netWorthAsOf` year so the UI can flag them as annual-disclosure estimates
+    rather than live figures. Members with a live figure get
+    `netWorthSource: "quiver"`. Stock holdings are untouched: an FD lists assets
+    in coarse ranges without live market values, so it can't produce the
+    per-ticker live portfolio the holdings column shows."""
+    fd_map = await get_disclosure_net_worth()
+    if not fd_map:
+        return payload
+
+    rows = payload["byNetWorth"]
+    filled = 0
+    updated: list[dict] = []
+    for row in rows:
+        if row.get("netWorth") is not None:
+            updated.append({**row, "netWorthSource": "quiver"})
+            continue
+        estimate = fd_map.get(row["id"])
+        if not estimate:
+            updated.append(row)
+            continue
+        filled += 1
+        updated.append(
+            {
+                **row,
+                "netWorth": estimate["netWorth"],
+                "netWorthSource": "fd",
+                "netWorthAsOf": estimate.get("asOf"),
+            }
+        )
+
+    if filled == 0:
+        # Still tag the live rows so the whole column is consistently sourced.
+        return _build_payload(updated)
+
+    logger.info("disclosure fallback filled %s net-worth gaps", filled)
+    return _build_payload(updated)
 
 
 def _count_populated(rows: list[dict]) -> int:
@@ -360,24 +404,24 @@ async def refresh_all_rankings(api_key: str | None = None) -> dict:
 async def get_house_rankings() -> dict:
     cached = await get_cache(HOUSE_RANKINGS_KEY)
     if cached and _count_populated(cached["byNetWorth"]) > 0:
-        return cached
+        return await _apply_disclosure_fallback(cached)
     members = await fetch_house_members(require_congress_api_key())
     from_db = await _rankings_from_db(members)
     if from_db and _count_populated(from_db["byNetWorth"]) > 0:
         await set_cache(HOUSE_RANKINGS_KEY, from_db, RANKINGS_TTL_SECONDS)
-        return from_db
-    return _members_to_empty_payload(members)
+        return await _apply_disclosure_fallback(from_db)
+    return await _apply_disclosure_fallback(_members_to_empty_payload(members))
 
 
 async def get_senate_rankings() -> dict:
     cached = await get_cache(SENATE_RANKINGS_KEY)
     if cached and _count_populated(cached["byNetWorth"]) > 0:
-        return cached
+        return await _apply_disclosure_fallback(cached)
 
     members = await fetch_senate_members(require_congress_api_key())
 
     from_db = await _rankings_from_db(members)
     if from_db and _count_populated(from_db["byNetWorth"]) > 0:
         await set_cache(SENATE_RANKINGS_KEY, from_db, RANKINGS_TTL_SECONDS)
-        return from_db
-    return _members_to_empty_payload(members)
+        return await _apply_disclosure_fallback(from_db)
+    return await _apply_disclosure_fallback(_members_to_empty_payload(members))

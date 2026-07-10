@@ -22,6 +22,7 @@ from ..clients.quiver import (
 from ..config import fec_api_key, quiver_api_key
 from ..core.db import (
     get_fec_candidate_from_db,
+    get_holdings_by_bioguide,
     get_pac_donations_from_db,
     get_trades_by_bioguide,
     replace_pac_donations,
@@ -201,7 +202,50 @@ def _breakdown_from_positions(positions: list[dict]) -> list[dict]:
     )
 
 
+def _breakdown_from_holdings(holdings: list[dict]) -> list[dict]:
+    """Group live portfolio positions (real current holdings) by asset category.
+
+    Holdings rows carry only ticker + value (from Quiver's live_stock_portfolio),
+    so the category is inferred from the ticker symbol; equities that don't match
+    a more specific rule fall to "Stocks". Unlike the trade-derived breakdown this
+    never nets buys against sells, so a member who holds assets always renders.
+    """
+    by_category: dict[str, float] = {}
+    for h in holdings:
+        try:
+            value = float(h.get("value") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(value) or value <= 0:
+            continue
+        ticker = (h.get("ticker") or "").strip()
+        category = _normalize_asset_category(None, ticker) if ticker else "Other"
+        if category == "Other":
+            category = "Stocks"
+        by_category[category] = by_category.get(category, 0) + value
+
+    return sorted(
+        (
+            {"category": category, "value": round(value)}
+            for category, value in by_category.items()
+        ),
+        key=lambda a: a["value"],
+        reverse=True,
+    )
+
+
 async def load_portfolio_breakdown(member_id: str) -> list[dict]:
+    # Prefer real current positions from the live portfolio snapshot. The
+    # trade-derived fallback below nets buys against sells, which blanks the
+    # card for members who only disclosed sales (a sale of a long-held asset
+    # never had a matching buy in the window) — the common "has trades and
+    # assets but no breakdown" case.
+    holdings = await get_holdings_by_bioguide(member_id)
+    if holdings:
+        breakdown = _breakdown_from_holdings(holdings)
+        if breakdown:
+            return breakdown
+
     rows = await get_trades_by_bioguide(member_id)
     if rows:
         return _breakdown_from_positions(

@@ -23,8 +23,10 @@ backend/
       quiver.py      Quiver trades + circuit breaker (was lib/quiver.ts)
       fec.py         OpenFEC totals/donations        (was lib/fec.ts)
       prices.py      Alpaca + FMP market data        (was lib/prices.ts)
+      disclosures.py House Clerk + Senate eFD annual financial disclosures
     services/      domain logic
-      rankings.py            (was lib/rankings.ts)
+      rankings.py            (was lib/rankings.ts) + FD net-worth fallback
+      disclosures.py         FD net-worth estimates keyed by bioguide id
       profile.py             (was lib/profile.ts)
       trades.py              (was lib/trades.ts)
       stock_leaderboard.py   (was lib/stockLeaderboard.ts)
@@ -99,6 +101,30 @@ schedules in `vercel.json`:
 | `/api/cron/backfill-trades`  | daily 05:30 |
 | `/api/cron/sync-members`     | daily 06:00 |
 | `/api/cron/sync-fec`         | daily 07:00 |
+| `/api/cron/sync-disclosures` | weekly |
+
+## Net-worth coverage: financial-disclosure fallback
+
+Quiver only estimates net worth and stock holdings for members who **disclose
+stock trades**, so members who don't trade individual stocks come back empty
+(~45 House, ~8 Senate). To fill the net-worth column, `sync-disclosures`
+downloads every member's **annual Financial Disclosure** — House from the Clerk
+(`disclosures-clerk.house.gov`, public ZIP index + per-filing PDFs), Senate from
+the eFD portal (`efdsearch.senate.gov`, agreement-gated HTML reports) — and sums
+each filing's asset-value-range midpoints into a gross net-worth estimate
+(OpenSecrets' methodology). Results are cached weekly and keyed by bioguide id.
+
+`get_house_rankings` / `get_senate_rankings` fill any row Quiver left null from
+this map. Quiver's live figure always wins where present. Filled rows carry
+`netWorthSource: "fd"` and `netWorthAsOf` (the filing year) so the UI badges
+them as annual-disclosure estimates; live rows carry `netWorthSource: "quiver"`.
+Stock holdings are never filled this way — an FD lists coarse value ranges, not
+the live per-ticker portfolio that column shows.
+
+Known gaps (left null): members who filed only an extension rather than an
+annual report, and the minority who submit scanned/image PDFs with no text layer
+(would need OCR). Estimates are gross assets from an annual snapshot, so they run
+higher and staler than Quiver's live mark-to-market figure — hence the badge.
 
 ## Endpoints
 
