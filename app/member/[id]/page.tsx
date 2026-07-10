@@ -4,13 +4,26 @@ import TopIndustriesCard from "@/components/TopIndustriesCard"
 import PacDonationsSection from "@/components/PACDonationsCard"
 import CongressTradesCard from "@/components/CongressTradesCard"
 import PortfolioBreakdownCard from "@/components/PortfolioBreakdownCard"
-import {
-  loadMemberBase,
-  loadMemberFecTotals,
-  loadMemberFecDonations,
-  loadPortfolioBreakdown,
-  loadTrades,
-} from "@/lib/profile"
+import { fetchBackend } from "@/lib/backend"
+import type { AssetAllocation, Industry, Member, PacDonation, Trade } from "@/types/member"
+
+type FecTotals = { totalRaised: number; totalSpent: number }
+type FecDonations = { pacDonations: PacDonation[]; topIndustries: Industry[] }
+
+// Next dedupes identical GETs within one render, so the existence check and
+// HeaderSection share a single request to the Python backend.
+const loadMemberBase = (id: string) =>
+  fetchBackend<Member>(`/api/member/${encodeURIComponent(id)}/base`)
+const loadMemberFecTotals = (id: string) =>
+  fetchBackend<FecTotals>(`/api/member/${encodeURIComponent(id)}/fec-totals`)
+const loadMemberFecDonations = (id: string) =>
+  fetchBackend<FecDonations>(`/api/member/${encodeURIComponent(id)}/fec-donations`)
+const loadPortfolioBreakdown = (id: string) =>
+  fetchBackend<{ allocations: AssetAllocation[] }>(
+    `/api/member/${encodeURIComponent(id)}/portfolio`
+  )
+const loadTrades = (id: string) =>
+  fetchBackend<{ trades: Trade[] }>(`/api/member/${encodeURIComponent(id)}/trades`)
 
 // Serve the fully-rendered profile from the route cache (milliseconds) and
 // regenerate in the background every 15 min. Without this the page re-renders
@@ -33,27 +46,27 @@ async function HeaderSection({ id }: { id: string }) {
     loadMemberFecTotals(id),
   ])
   if (!base) return <div>Member not found</div>
-  return <MemberHeader member={{ ...base, ...totals }} />
+  return <MemberHeader member={{ ...base, ...(totals ?? {}) }} />
 }
 
 async function IndustriesSection({ id }: { id: string }) {
-  const { topIndustries } = await loadMemberFecDonations(id)
-  return <TopIndustriesCard industries={topIndustries} />
+  const donations = await loadMemberFecDonations(id)
+  return <TopIndustriesCard industries={donations?.topIndustries ?? []} />
 }
 
 async function PortfolioSection({ id }: { id: string }) {
-  const allocations = await loadPortfolioBreakdown(id)
-  return <PortfolioBreakdownCard allocations={allocations} />
+  const breakdown = await loadPortfolioBreakdown(id)
+  return <PortfolioBreakdownCard allocations={breakdown?.allocations ?? []} />
 }
 
 async function DonationsSection({ id }: { id: string }) {
-  const { pacDonations } = await loadMemberFecDonations(id)
-  return <PacDonationsSection donations={pacDonations} />
+  const donations = await loadMemberFecDonations(id)
+  return <PacDonationsSection donations={donations?.pacDonations ?? []} />
 }
 
 async function TradesSection({ id }: { id: string }) {
-  const trades = await loadTrades(id)
-  return <CongressTradesCard memberId={id} initialTrades={trades} />
+  const data = await loadTrades(id)
+  return <CongressTradesCard memberId={id} initialTrades={data?.trades ?? []} />
 }
 
 function HeaderSkeleton() {
@@ -77,7 +90,7 @@ export default async function MemberPage({
 }) {
   const { id } = await params
 
-  // Fast existence check on the cheap Congress.gov lookup (cache()-deduped, so
+  // Fast existence check on the cheap Congress.gov lookup (fetch-deduped, so
   // HeaderSection reuses it). Avoids streaming empty cards for an unknown id.
   if (!(await loadMemberBase(id))) {
     return <div style={{ padding: "2rem" }}>Member not found</div>

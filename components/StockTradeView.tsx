@@ -10,8 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import type { DaySnapshot } from "@/lib/prices"
-import type { ProfitLoss, TradeDetail } from "@/lib/trades"
+import type { DaySnapshot, ProfitLoss, TradeDetail } from "@/types/trade"
 
 const priceFmt = new Intl.NumberFormat("en-US", {
   style: "currency",

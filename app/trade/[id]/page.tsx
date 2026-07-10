@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { loadTradeDetail } from "@/lib/trades"
+import { fetchBackend } from "@/lib/backend"
+import type { TradeDetail } from "@/types/trade"
 import StockTradeView from "@/components/StockTradeView"
 
 // Price snapshots are immutable history; cache the rendered page and refresh in
@@ -18,7 +19,9 @@ export default async function TradePage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const detail = await loadTradeDetail(decodeURIComponent(id))
+  const detail = await fetchBackend<TradeDetail>(
+    `/api/trade/${encodeURIComponent(decodeURIComponent(id))}`
+  )
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-950">
