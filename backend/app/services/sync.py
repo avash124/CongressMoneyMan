@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-import re
-import unicodedata
 
 from ..clients.congress import fetch_house_members, fetch_senate_members, get_state_code
 from ..clients.fec import fetch_fec_totals, fetch_pac_donations
@@ -19,53 +17,17 @@ from ..core.db import (
     upsert_members,
     upsert_trades,
 )
-from ..core.util import map_with_concurrency
+from ..core.util import build_bioguide_by_name, map_with_concurrency, name_token_key
+from .disclosures import refresh_disclosure_net_worth
 from .profile import aggregate_donors, current_cycle, resolve_fec_candidate
 from .rankings import refresh_all_rankings
 from .stock_leaderboard import refresh_stock_performance
 
 logger = logging.getLogger("sync")
 
-_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
-
 
 def _last_name(list_name: str) -> str:
     return list_name.split(",")[0].strip() or list_name
-
-
-def _name_token_key(name: str) -> str:
-    """Order-independent, accent-insensitive name key so the roster's
-    "Last, First" and Quiver's "First Last" collapse to the same value
-    (e.g. "Van Hollen, Chris" and "Chris Van Hollen" both -> "chris hollen van").
-    """
-    ascii_name = (
-        unicodedata.normalize("NFD", name).encode("ascii", "ignore").decode("ascii")
-    )
-    tokens = [
-        token
-        for token in re.split(r"[^a-z]+", ascii_name.lower())
-        if token and token not in _NAME_SUFFIXES
-    ]
-    return " ".join(sorted(tokens))
-
-
-def _build_bioguide_by_name(members: list[dict]) -> dict[str, str]:
-    by_key: dict[str, str] = {}
-    ambiguous: set[str] = set()
-    for member in members:
-        key = _name_token_key(member["name"])
-        if not key:
-            continue
-        existing = by_key.get(key)
-        if existing and existing != member["id"]:
-            ambiguous.add(key)
-        else:
-            by_key[key] = member["id"]
-    # Drop names shared by two members rather than risk attributing a trade to
-    # the wrong person; those stay unresolved (and are dropped on insert).
-    for key in ambiguous:
-        by_key.pop(key, None)
-    return by_key
 
 
 def _attach_missing_bioguides(trades: list[dict], by_name: dict[str, str]) -> int:
@@ -73,7 +35,7 @@ def _attach_missing_bioguides(trades: list[dict], by_name: dict[str, str]) -> in
     for trade in trades:
         if trade.get("Bioguide") or not trade.get("Representative"):
             continue
-        bioguide_id = by_name.get(_name_token_key(trade["Representative"]))
+        bioguide_id = by_name.get(name_token_key(trade["Representative"]))
         if bioguide_id:
             trade["Bioguide"] = bioguide_id
             resolved += 1
@@ -93,7 +55,7 @@ async def _resolve_missing_bioguides(trades: list[dict]) -> int:
             fetch_house_members(api_key), fetch_senate_members(api_key)
         )
         return _attach_missing_bioguides(
-            trades, _build_bioguide_by_name([*house, *senate])
+            trades, build_bioguide_by_name([*house, *senate])
         )
     except Exception as error:
         logger.warning("bioguide name-resolution skipped: %s", error)
@@ -182,6 +144,15 @@ async def sync_stock_performance() -> dict:
     here — it is filled as a side effect of refresh_all_rankings."""
     rows = await refresh_stock_performance()
     return {"stocks": len(rows)}
+
+
+async def sync_disclosures() -> dict:
+    """Rebuild the annual financial-disclosure net-worth estimates that fill
+    the rankings' net-worth gaps for members Quiver has no live figure for.
+    Downloads/parses ~500 filings, so it runs on a weekly cadence — annual
+    filings barely change between runs."""
+    estimates = await refresh_disclosure_net_worth()
+    return {"members": len(estimates)}
 
 
 FEC_CONCURRENCY = 4

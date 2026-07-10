@@ -237,6 +237,14 @@ async def get_holdings_by_ticker(ticker: str) -> list[dict]:
     )
 
 
+async def get_holdings_by_bioguide(bioguide_id: str) -> list[dict]:
+    return await _select(
+        "portfolio_holdings",
+        {"select": "*", "bioguide_id": f"eq.{bioguide_id}"},
+        f"get_holdings_by_bioguide({bioguide_id})",
+    )
+
+
 async def replace_holdings_for_members(
     member_ids: list[str], rows: list[dict]
 ) -> None:

@@ -10,6 +10,10 @@ type RankingRow = {
   state: string
   stockHoldings: number | null
   netWorth: number | null
+  // Present on the net-worth column: "quiver" = live estimate, "fd" = annual
+  // financial-disclosure estimate (net worth only), with the filing year.
+  netWorthSource?: "quiver" | "fd"
+  netWorthAsOf?: number
 }
 
 type SenateRankingsResponse = {
@@ -96,7 +100,19 @@ function RankingTable({
                 </td>
                 <td className="px-4 py-3 text-slate-600">{row.state}</td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                  {formatCurrency(row[valueKey])}
+                  <span className="inline-flex items-center justify-end gap-1.5">
+                    {formatCurrency(row[valueKey])}
+                    {valueKey === "netWorth" &&
+                      row.netWorthSource === "fd" &&
+                      row.netWorth !== null && (
+                        <span
+                          className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 ring-1 ring-amber-200"
+                          title={`Estimated from ${row.netWorthAsOf ?? ""} annual financial disclosure — no live figure available`}
+                        >
+                          est.{row.netWorthAsOf ? ` ’${String(row.netWorthAsOf).slice(2)}` : ""}
+                        </span>
+                      )}
+                  </span>
                 </td>
               </tr>
             ))}

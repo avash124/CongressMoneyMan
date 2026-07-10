@@ -2,13 +2,94 @@
 
 import asyncio
 import functools
+import re
 import time
+import unicodedata
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any, TypeVar
 
 T = TypeVar("T")
 R = TypeVar("R")
+
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+
+
+def name_token_key(name: str) -> str:
+    """Order-independent, accent-insensitive name key so different renderings
+    of a name collapse to one value (e.g. "Van Hollen, Chris" and
+    "Chris Van Hollen" both -> "chris hollen van"). Used to match roster ids
+    against Quiver trade names and FD filer names."""
+    ascii_name = (
+        unicodedata.normalize("NFD", name).encode("ascii", "ignore").decode("ascii")
+    )
+    tokens = [
+        token
+        for token in re.split(r"[^a-z]+", ascii_name.lower())
+        if token and token not in _NAME_SUFFIXES
+    ]
+    return " ".join(sorted(tokens))
+
+
+def _dedupe_by_key(pairs: list[tuple[str, str]]) -> dict[str, str]:
+    """Build key -> id, dropping keys shared by two different ids so an
+    ambiguous key is left unresolved rather than misattributed."""
+    by_key: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for key, id_ in pairs:
+        if not key:
+            continue
+        existing = by_key.get(key)
+        if existing and existing != id_:
+            ambiguous.add(key)
+        else:
+            by_key[key] = id_
+    for key in ambiguous:
+        by_key.pop(key, None)
+    return by_key
+
+
+def build_bioguide_by_name(members: list[dict]) -> dict[str, str]:
+    """Map name_token_key -> bioguide id (exact token-set match)."""
+    return _dedupe_by_key([(name_token_key(m["name"]), m["id"]) for m in members])
+
+
+def _last_initial_key(name: str) -> str:
+    """Loose key: last name + first-name initial, order-insensitive on the last
+    name so "Adams, Alma S." and "Alma Shealey Adams" collapse. Handles both
+    roster "Last, First" and filing "First Last" forms."""
+    ascii_name = (
+        unicodedata.normalize("NFD", name).encode("ascii", "ignore").decode("ascii")
+    )
+    if "," in ascii_name:
+        last_part, _, first_part = ascii_name.partition(",")
+    else:
+        # "First [Middle...] Last" -> last token is the surname.
+        tokens = re.split(r"[^A-Za-z]+", ascii_name)
+        tokens = [t for t in tokens if t and t.lower() not in _NAME_SUFFIXES]
+        if not tokens:
+            return ""
+        last_part, first_part = tokens[-1], (tokens[0] if len(tokens) > 1 else "")
+    last = re.sub(r"[^a-z]", "", last_part.lower())
+    first_initial = re.sub(r"[^a-z]", "", first_part.lower())[:1]
+    return f"{last}|{first_initial}" if last and first_initial else ""
+
+
+class BioguideMatcher:
+    """Two-tier name -> bioguide resolver. Tries an exact token-set match first
+    (safe), then a last-name + first-initial match (broader, still guarded
+    against ambiguity). Built once from the roster, reused across all filers."""
+
+    def __init__(self, members: list[dict]) -> None:
+        self._exact = build_bioguide_by_name(members)
+        self._loose = _dedupe_by_key(
+            [(_last_initial_key(m["name"]), m["id"]) for m in members]
+        )
+
+    def resolve(self, name: str) -> str | None:
+        return self._exact.get(name_token_key(name)) or self._loose.get(
+            _last_initial_key(name)
+        )
 
 
 def parse_ms(value: str | None) -> float | None:
