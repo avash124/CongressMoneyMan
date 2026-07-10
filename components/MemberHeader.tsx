@@ -1,6 +1,6 @@
 import Image from "next/image"
 import { Member } from "@/types/member"
-import { isNonVotingHouseSeat } from "@/lib/congress"
+import { isNonVotingHouseSeat } from "@/lib/states"
 
 interface MemberHeaderProps {
   member: Member
