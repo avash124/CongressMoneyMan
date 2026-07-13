@@ -94,8 +94,6 @@ def _get_live_positions(payload: dict) -> list[dict]:
 
 
 def _ranking_sort_key(field: str):
-    # Nulls sort last, larger values first, name breaks ties — like the TS
-    # compareRankingValues + localeCompare pair.
     def key(row: dict):
         value = row.get(field)
         return (value is None, -(value or 0), row["name"])
@@ -209,7 +207,6 @@ async def _apply_disclosure_fallback(payload: dict) -> dict:
         )
 
     if filled == 0:
-        # Still tag the live rows so the whole column is consistently sourced.
         return _build_payload(updated)
 
     logger.info("disclosure fallback filled %s net-worth gaps", filled)

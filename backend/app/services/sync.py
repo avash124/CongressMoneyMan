@@ -21,7 +21,9 @@ from ..core.util import build_bioguide_by_name, map_with_concurrency, name_token
 from .disclosures import refresh_disclosure_net_worth
 from .profile import aggregate_donors, current_cycle, resolve_fec_candidate
 from .rankings import refresh_all_rankings
+from .entity_cards import refresh_entity_cards
 from .stock_leaderboard import refresh_stock_performance
+from .trade_features import refresh_trade_features
 
 logger = logging.getLogger("sync")
 
@@ -144,6 +146,16 @@ async def sync_stock_performance() -> dict:
     here — it is filled as a side effect of refresh_all_rankings."""
     rows = await refresh_stock_performance()
     return {"stocks": len(rows)}
+
+
+async def sync_trade_features() -> dict:
+    """Rebuild the RAG feature layer (trade_features + asset_class_stats) from
+    the persisted trades, then refresh the semantic entity cards built on top
+    of it. Reads the DB plus price history for the priced universe, so it has
+    no Quiver fan-out and runs daily."""
+    features = await refresh_trade_features()
+    cards = await refresh_entity_cards()
+    return {**features, **cards}
 
 
 async def sync_disclosures() -> dict:

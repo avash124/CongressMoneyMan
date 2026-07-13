@@ -1,0 +1,13 @@
+{
+  "label": "baselines",
+  "snapshot": "ml/snapshots/trades-a8b7633c7eb854bf.parquet",
+  "n_rows": 100922,
+  "today": "2026-07-12",
+  "horizon_days": 30,
+  "k_values": [
+    5,
+    10,
+    20
+  ],
+  "maturity_cutoff": "2026-03-29"
+}

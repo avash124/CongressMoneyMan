@@ -1,0 +1,47 @@
+{
+  "label": "ranker",
+  "snapshot": "ml/snapshots/trades-a8b7633c7eb854bf.parquet",
+  "n_rows": 100922,
+  "today": "2026-07-12",
+  "horizon_days": 30,
+  "k_values": [
+    5,
+    10,
+    20
+  ],
+  "train_folds": 111,
+  "eval_folds": 191,
+  "train_frac": 0.7,
+  "train_stride": 4,
+  "features": [
+    "m_total_trades",
+    "m_distinct_tickers",
+    "m_trades_per_month",
+    "m_buy_ratio",
+    "m_days_since_last_trade",
+    "m_active_days",
+    "mt_decayed_freq",
+    "mt_trade_count",
+    "mt_buy_count",
+    "mt_sell_count",
+    "mt_days_since_last",
+    "mt_is_repeat",
+    "h_net_position",
+    "h_is_held",
+    "pop_peer_count",
+    "pop_chamber_count",
+    "pop_global_count",
+    "pop_peer_recent_count",
+    "pop_global_recent_count",
+    "pop_global_novel",
+    "pop_peer_novel",
+    "cand_recip_rank"
+  ],
+  "gate": {
+    "passed": true,
+    "ranker_map": 0.3042504329257728,
+    "baseline_map": 0.275533714373921,
+    "ranker_novel_r20": 0.052509184815615305,
+    "baseline_novel_r20": 0.05232497007300471
+  }
+}

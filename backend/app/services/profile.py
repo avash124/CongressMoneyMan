@@ -72,7 +72,6 @@ async def _fetch_raw_member(member_id: str) -> dict | None:
 def _trade_from_db_row(row: dict) -> dict:
     range_text = row.get("range_text")
     if range_text is None:
-        # Bulk-history rows carry only the numeric amount, not a formatted range.
         range_text = format_trade_range(float(row.get("trade_size_usd") or 0))
     return {
         "id": row["trade_id"],
@@ -126,13 +125,6 @@ async def load_trades(member_id: str) -> list[dict]:
     return trades[:RECENT_TRADES_LIMIT]
 
 
-# Ordered most-specific first; the first pattern to hit the combined
-# asset-type + description text wins. The description is scanned too because the
-# Quiver `AssetType`/`TickerType` field is usually just "ST"/empty, so real
-# estate, crypto, ETFs, etc. are only recoverable from the asset name. Stocks
-# sits below the asset classes that also trade like equities (ETFs/REITs) and
-# above Trusts so a bank named "...Trust" stays a stock — a heuristic estimate
-# matching the card's "estimated holdings" framing.
 _ASSET_CATEGORY_RULES: list[tuple[str, re.Pattern]] = [
     ("Real Estate", re.compile(r"real estate|real property|\breit\b|realty|rental propert|land trust")),
     ("Crypto", re.compile(r"crypto|bitcoin|ethereum|\bbtc\b|\beth\b|digital asset|stablecoin")),
@@ -153,7 +145,6 @@ def _normalize_asset_category(asset_type: str | None, description: str | None = 
     for category, pattern in _ASSET_CATEGORY_RULES:
         if pattern.search(text):
             return category
-    # Unknown but non-empty type still gets its own labelled slice.
     raw = (asset_type or "").strip()
     if not raw:
         return "Other"
@@ -235,11 +226,6 @@ def _breakdown_from_holdings(holdings: list[dict]) -> list[dict]:
 
 
 async def load_portfolio_breakdown(member_id: str) -> list[dict]:
-    # Prefer real current positions from the live portfolio snapshot. The
-    # trade-derived fallback below nets buys against sells, which blanks the
-    # card for members who only disclosed sales (a sale of a long-held asset
-    # never had a matching buy in the window) — the common "has trades and
-    # assets but no breakdown" case.
     holdings = await get_holdings_by_bioguide(member_id)
     if holdings:
         breakdown = _breakdown_from_holdings(holdings)
@@ -364,10 +350,6 @@ async def _load_fec_donations(member_id: str, resolve_ref) -> dict:
     if not api_key:
         return EMPTY_DONATIONS
 
-    # A failed FEC lookup must degrade to "no donations" rather than throw — an
-    # uncaught error here blanks the cards instead of rendering their empty
-    # state (members usually hit the DB branch above; senators fall through to
-    # the live API, so the failure surfaced on senator profiles).
     try:
         ref = await resolve_ref()
         if not ref:

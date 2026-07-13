@@ -24,13 +24,10 @@ from ..core.util import BioguideMatcher, map_with_concurrency
 logger = logging.getLogger("disclosures_service")
 
 DISCLOSURE_NET_WORTH_KEY = "disclosure-net-worth-v1"
-DISCLOSURE_TTL_SECONDS = 7 * 24 * 60 * 60  # weekly; annual filings rarely change
+DISCLOSURE_TTL_SECONDS = 7 * 24 * 60 * 60
 
-_PDF_CONCURRENCY = 4  # House PDF downloads
-_REPORT_CONCURRENCY = 4  # Senate HTML fetches
-# A filing that parses to fewer than this many assets almost certainly failed to
-# extract (a real annual report lists cash/retirement accounts at minimum), so
-# treat it as a miss rather than caching a spuriously low estimate.
+_PDF_CONCURRENCY = 4
+_REPORT_CONCURRENCY = 4
 _MIN_ASSETS = 1
 
 
@@ -84,8 +81,6 @@ async def refresh_disclosure_net_worth() -> dict[str, dict]:
     house_matcher = BioguideMatcher(house_members)
     senate_matcher = BioguideMatcher(senate_members)
 
-    # Try newest filing year first and keep the freshest estimate per member,
-    # backfilling from prior years for anyone the newest year doesn't yet cover.
     house_map: dict[str, dict] = {}
     senate_map: dict[str, dict] = {}
     for year in candidate_filing_years():

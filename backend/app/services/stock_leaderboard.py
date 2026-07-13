@@ -299,9 +299,6 @@ async def _performance_for_ticker(buys: dict) -> dict | None:
 async def refresh_stock_performance() -> list[dict]:
     trades, holdings = await asyncio.gather(get_all_trades(), get_holdings_from_db())
 
-    # Only rank stocks members currently hold — a bought-then-sold ticker has no
-    # holders, so its ownership view would be empty. Skip the filter if holdings
-    # haven't synced yet, so a missing table can't blank the whole board.
     held_tickers = {
         (h.get("ticker") or "").strip().upper()
         for h in holdings

@@ -9,7 +9,8 @@ import asyncio
 import logging
 import time
 
-from app import config  # noqa: F401  (loads .env.local)
+from app import config
+from app.services.predictions_job import run_batch_scorer
 from app.services.sync import (
     backfill_trades,
     sync_disclosures,
@@ -17,6 +18,7 @@ from app.services.sync import (
     sync_members,
     sync_rankings,
     sync_stock_performance,
+    sync_trade_features,
     sync_trades,
 )
 
@@ -34,8 +36,10 @@ JOBS = [
     {"name": "trades-backfill", "interval": 24 * HOUR, "run": backfill_trades},
     {"name": "rankings", "interval": 60 * MINUTE, "run": sync_rankings},
     {"name": "stock-performance", "interval": 24 * HOUR, "run": sync_stock_performance},
+    {"name": "trade-features", "interval": 24 * HOUR, "run": sync_trade_features},
     {"name": "fec", "interval": 24 * HOUR, "run": sync_fec},
     {"name": "disclosures", "interval": 7 * 24 * HOUR, "run": sync_disclosures},
+    {"name": "predictions", "interval": 7 * 24 * HOUR, "run": run_batch_scorer},
 ]
 
 _in_progress: set[str] = set()

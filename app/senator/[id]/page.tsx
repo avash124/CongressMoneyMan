@@ -3,6 +3,8 @@ import MemberHeader from "@/components/MemberHeader"
 import TopIndustriesCard from "@/components/TopIndustriesCard"
 import PacDonationsSection from "@/components/PACDonationsCard"
 import CongressTradesCard from "@/components/CongressTradesCard"
+import InsightCard from "@/components/InsightCard"
+import PredictedTradesCard from "@/components/PredictedTradesCard"
 import PortfolioBreakdownCard from "@/components/PortfolioBreakdownCard"
 import { fetchBackend } from "@/lib/backend"
 import type { AssetAllocation, Industry, Member, PacDonation, Trade } from "@/types/member"
@@ -10,8 +12,6 @@ import type { AssetAllocation, Industry, Member, PacDonation, Trade } from "@/ty
 type FecTotals = { totalRaised: number; totalSpent: number }
 type FecDonations = { pacDonations: PacDonation[]; topIndustries: Industry[] }
 
-// Next dedupes identical GETs within one render, so the existence check and
-// HeaderSection share a single request to the Python backend.
 const loadSenatorBase = (id: string) =>
   fetchBackend<Member>(`/api/senator/${encodeURIComponent(id)}/base`)
 const loadSenatorFecTotals = (id: string) =>
@@ -25,21 +25,12 @@ const loadPortfolioBreakdown = (id: string) =>
 const loadTrades = (id: string) =>
   fetchBackend<{ trades: Trade[] }>(`/api/member/${encodeURIComponent(id)}/trades`)
 
-// Serve the fully-rendered profile from the route cache (milliseconds) and
-// regenerate in the background every 15 min. Without this the page re-renders
-// per request, awaiting ~1s of sequential Congress.gov + FEC calls every time.
-// `generateStaticParams` (empty) opts the dynamic `[id]` route into ISR: the
-// first visit to a senator renders on demand and is cached; everyone after is
-// served statically until the next revalidation.
 export const revalidate = 900
 
 export async function generateStaticParams() {
   return []
 }
 
-// Header needs Congress.gov (fast) + FEC totals (one cheap request), so it
-// streams ahead of the slow PAC-donation pagination that the industries and
-// donations cards need. Trades stream independently from Quiver.
 async function HeaderSection({ id }: { id: string }) {
   const [base, totals] = await Promise.all([
     loadSenatorBase(id),
@@ -90,8 +81,6 @@ export default async function SenatorPage({
 }) {
   const { id } = await params
 
-  // Fast existence check on the cheap Congress.gov lookup (fetch-deduped, so
-  // HeaderSection reuses it). Avoids streaming empty cards for an unknown id.
   if (!(await loadSenatorBase(id))) {
     return <div style={{ padding: "2rem" }}>Senator not found</div>
   }
@@ -112,6 +101,21 @@ export default async function SenatorPage({
         </Suspense>
         <Suspense fallback={<CardSkeleton />}>
           <IndustriesSection id={id} />
+        </Suspense>
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <Suspense fallback={<CardSkeleton />}>
+          <InsightCard
+            path={`/api/insights/member/${encodeURIComponent(id)}`}
+            title="Trading Pattern Insight"
+          />
+        </Suspense>
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <Suspense fallback={<CardSkeleton />}>
+          <PredictedTradesCard id={id} />
         </Suspense>
       </div>
 

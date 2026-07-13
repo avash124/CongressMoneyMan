@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from ..config import congress_api_key, cron_secret
 from ..core.util import now_iso
+from ..services.predictions_job import spawn_batch_scorer
 from ..services.rankings import refresh_all_rankings
 from ..services.sync import (
     backfill_trades,
@@ -19,6 +20,7 @@ from ..services.sync import (
     sync_fec,
     sync_members,
     sync_stock_performance,
+    sync_trade_features,
     sync_trades,
 )
 
@@ -102,6 +104,21 @@ async def cron_backfill_trades(request: Request):
         return JSONResponse({"error": message}, status_code=500)
 
 
+@router.get("/api/cron/refresh-features")
+async def cron_refresh_features(request: Request):
+    denied = _unauthorized(request)
+    if denied:
+        return denied
+
+    try:
+        result = await sync_trade_features()
+        return {"ok": True, **result, "refreshedAt": now_iso()}
+    except Exception as error:
+        message = str(error) or "Failed to refresh trade features"
+        logger.error("refresh-features: %s", message)
+        return JSONResponse({"error": message}, status_code=500)
+
+
 @router.get("/api/cron/sync-members")
 async def cron_sync_members(request: Request):
     denied = _unauthorized(request)
@@ -129,6 +146,21 @@ async def cron_sync_fec(request: Request):
     except Exception as error:
         message = str(error) or "Failed to sync FEC data"
         logger.error("sync-fec: %s", message)
+        return JSONResponse({"error": message}, status_code=500)
+
+
+@router.get("/api/cron/refresh-predictions")
+async def cron_refresh_predictions(request: Request):
+    denied = _unauthorized(request)
+    if denied:
+        return denied
+
+    try:
+        spawn_batch_scorer()
+        return {"ok": True, "started": True, "startedAt": now_iso()}
+    except Exception as error:
+        message = str(error) or "Failed to start prediction scorer"
+        logger.error("refresh-predictions: %s", message)
         return JSONResponse({"error": message}, status_code=500)
 
 

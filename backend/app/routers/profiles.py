@@ -69,8 +69,6 @@ async def member_fec_totals(member_id: str):
 @router.get("/api/member/{member_id}/fec-donations")
 async def member_fec_donations(member_id: str):
     try:
-        # The industries and donations page sections request this concurrently;
-        # collapse them onto one FEC pagination run.
         return await single_flight(
             f"member-fec-donations:{member_id}",
             lambda: load_member_fec_donations(member_id),

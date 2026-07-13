@@ -165,8 +165,6 @@ async def get_daily_closes(ticker: str, from_date: str) -> list[dict]:
             ]
             return sorted(closes, key=lambda b: parse_ms(b["date"]) or 0)
 
-    # FMP missing or rate-limited — fall back to Alpaca's daily bars, which draw
-    # on a separate quota, so a maxed-out FMP key can't blank the leaderboard.
     bars = await _alpaca_bars(
         ticker,
         {

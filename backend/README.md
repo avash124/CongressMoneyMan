@@ -35,8 +35,13 @@ backend/
       sync.py                (was lib/sync.ts)
       sector_map.py          (was lib/sectorMap.ts)
       industry_classifier.py (was app/api/member/[id]/industryClassifier.ts)
+      trade_features.py      RAG feature layer: per-member/ticker/asset-class stats
+      retrieval.py           RAG retrieval: LLM-ready feature dicts
+      entity_cards.py        RAG semantic layer: pgvector entity cards (Voyage)
+      insights.py            RAG generation: grounded Claude insights
     routers/       HTTP endpoints, one module per API area
-      members.py rankings.py trades.py profiles.py pacs.py stocks.py cron.py
+      members.py rankings.py trades.py profiles.py pacs.py stocks.py
+      insights.py cron.py
   worker.py        background sync loop              (was scripts/worker.ts)
   requirements.txt
 ```
@@ -54,8 +59,10 @@ Environment variables are read from the repo root `.env.local` (same file the
 Next.js app uses): `CONGRESS_API_KEY`, `QUIVER_API_KEY`, `FEC_API_KEY`,
 `ALPACA_KEY`/`ALPACA_SECRET`, `FMP_API_KEY`, `SUPABASE_URL`/
 `SUPABASE_SERVICE_ROLE_KEY`, `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`,
-and optionally `CRON_SECRET`. Everything degrades gracefully when a credential
-is missing (empty data, not errors), matching the TS behavior.
+and optionally `CRON_SECRET`, `VOYAGE_API_KEY` (RAG semantic layer), and
+`ANTHROPIC_API_KEY` (RAG insight generation). Everything degrades gracefully
+when a credential is missing (empty data, not errors), matching the TS
+behavior.
 
 ## Run
 
@@ -101,7 +108,55 @@ schedules in `vercel.json`:
 | `/api/cron/backfill-trades`  | daily 05:30 |
 | `/api/cron/sync-members`     | daily 06:00 |
 | `/api/cron/sync-fec`         | daily 07:00 |
+| `/api/cron/refresh-features` | daily 08:00 |
 | `/api/cron/sync-disclosures` | weekly |
+
+## RAG insight layers
+
+`refresh-features` (daily) aggregates the persisted `trades` into two Supabase
+tables (`supabase/migrations/0004_trade_features.sql`): `trade_features` — one
+row per member and per ticker with trade frequency/recency, buy/sell ratio,
+holding-period estimates from paired buy→sell legs, and estimated P/L on
+recent buys benchmarked against SPY — and `asset_class_stats` — one row per
+asset class (stock/ETF/crypto/…) with chamber/party splits. All numbers are
+computed deterministically in `services/trade_features.py`;
+`services/retrieval.py` exposes them as compact dicts
+(`get_features_by_member`, `get_features_by_ticker`, `compare_assets`,
+`top_movers`) that ground the LLM layers built on top (see
+`docs/rag-insights-plan.md`).
+
+**Semantic layer (phase 3, optional):** the same cron job maintains
+`entity_cards` (`supabase/migrations/0005_entity_cards.sql`, pgvector) — one
+stable identity card per member and per notable ticker, embedded with Voyage
+(`voyage-3.5-lite`). `services/entity_cards.py::resolve_entities` turns fuzzy
+references ("the AI chip maker senators bought") into concrete
+tickers/bioguide ids; numbers still come from the retrieval layer. Inactive
+until `VOYAGE_API_KEY` is set and migration 0005 is applied. Eval:
+`python evals/retrieval_eval.py` (20 queries, hit@3).
+
+**Generation layer (phase 4):** `services/insights.py` produces templated,
+grounded insights (`asset_insight`, `member_insight`, `compare_insight`,
+`asset_class_insight`) with Claude (`claude-opus-4-8`, adaptive thinking,
+streaming, cached system prompt). Every numeric claim must come from the
+numbered context rows and cite them; each result returns its context for
+auditability. Inactive until `ANTHROPIC_API_KEY` is set. Eval:
+`python evals/grounding_eval.py --limit 6` (regex-extracts numeric claims,
+asserts each appears in the supplied context).
+
+**API layer (phase 5):** `routers/insights.py` serves the generated insights —
+`/api/insights/asset/{ticker}`, `/api/insights/member/{bioguide_id}`,
+`/api/insights/asset-class/{type}`, and
+`/api/insights/compare?tickers=A,B&assetTypes=crypto`. Generation is the
+expensive step, so each insight is Redis-cached for 24 h (matching the daily
+feature refresh); a missing entity or disabled generation layer returns 404,
+which the frontend treats as "hide the card".
+
+## Tests
+
+```sh
+.venv/Scripts/pip install -r requirements-dev.txt
+.venv/Scripts/python -m pytest
+```
 
 ## Net-worth coverage: financial-disclosure fallback
 
@@ -135,6 +190,10 @@ Same surface the Next.js API routes had:
 `/api/pac-chart/{pac}`, `/api/pac-recipients-feed/{pac}`,
 `/api/stock-leaderboard`, `/api/stock-leaderboard/{ticker}`,
 `/api/stock-chart/{ticker}?range=`, `/api/cron/*`, plus `/api/health`.
+
+New in the Python backend: `/api/insights/asset/{ticker}`,
+`/api/insights/member/{bioguide_id}`, `/api/insights/asset-class/{type}`, and
+`/api/insights/compare?tickers=&assetTypes=` (see "RAG insight layers").
 
 Granular endpoints used by the profile/trade server pages (formerly direct
 `lib/profile.ts` / `lib/trades.ts` imports), letting each page section stream

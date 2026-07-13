@@ -67,7 +67,6 @@ async def fetch_quiver_with_retry(url: str, headers: dict[str, str]):
             if response.status_code < 400:
                 return response
 
-            # Retry only on rate-limiting / transient server errors.
             if response.status_code == 429 or response.status_code >= 500:
                 await _record_quiver_failure()
                 last_error = RuntimeError(f"Quiver responded {response.status_code}")
@@ -232,7 +231,6 @@ async def fetch_all_congress_trades(
 
 
 def _normalize_bulk_trade(raw: dict) -> dict:
-    # Reuse the live-feed id logic so the same disclosure dedupes across feeds.
     trade_id = _synthetic_trade_id(
         {
             "BioGuideID": raw.get("BioGuideID"),

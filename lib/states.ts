@@ -1,5 +1,3 @@
-// State-code helpers used by frontend components (extracted from the former
-// lib/congress.ts when the TypeScript backend moved to backend/ in Python).
 const STATE_NAME_TO_CODE: Record<string, string> = {
   Alabama: "AL",
   Alaska: "AK",

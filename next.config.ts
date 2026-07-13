@@ -10,9 +10,6 @@ const nextConfig: NextConfig = {
     ],
   },
   transpilePackages: ["mapbox-gl", "react-map-gl"],
-  // All /api/* requests are served by the Python backend in backend/. Set
-  // FASTAPI_URL to point at it in production; the default matches
-  // `uvicorn app.main:app --port 8000` for local development.
   async rewrites() {
     const backend = process.env.FASTAPI_URL ?? "http://127.0.0.1:8000"
     return [{ source: "/api/:path*", destination: `${backend}/api/:path*` }]
