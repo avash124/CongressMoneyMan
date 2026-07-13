@@ -1,5 +1,3 @@
-// Trade-detail response shapes served by the Python backend's /api/trade/{id}
-// (formerly the return types of lib/trades.ts and lib/prices.ts).
 export type PriceBar = {
   t: number
   o: number

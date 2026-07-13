@@ -64,7 +64,6 @@ def _last_initial_key(name: str) -> str:
     if "," in ascii_name:
         last_part, _, first_part = ascii_name.partition(",")
     else:
-        # "First [Middle...] Last" -> last token is the surname.
         tokens = re.split(r"[^A-Za-z]+", ascii_name)
         tokens = [t for t in tokens if t and t.lower() not in _NAME_SUFFIXES]
         if not tokens:

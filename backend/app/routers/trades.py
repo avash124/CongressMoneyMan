@@ -15,10 +15,6 @@ logger = logging.getLogger("live_trades")
 
 router = APIRouter()
 
-# The page surfaces the most-recent disclosures across all of Congress. Both
-# sources of the feed (Quiver's live endpoint and the DB-backed recent slice)
-# hold ~1000 rows; cap here so the page renders exactly the 1000 newest
-# regardless of source.
 LIVE_TRADES_LIMIT = 1000
 
 
@@ -72,10 +68,6 @@ async def live_trades():
 
         return {"trades": trades[:LIVE_TRADES_LIMIT], "generatedAt": now_iso()}
     except QuiverCircuitOpenError:
-        # An open circuit breaker is a transient upstream condition (Quiver is
-        # rate-limiting or down), not a client error — degrade to an empty,
-        # non-error response so the UI shows "temporarily unavailable" instead
-        # of a scary failure banner, and retries naturally on the next load.
         logger.warning("circuit breaker open — serving empty trades")
         return {"trades": [], "unavailable": True}
     except Exception as error:

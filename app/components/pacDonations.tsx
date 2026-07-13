@@ -112,8 +112,6 @@ function memberHref(chamber: "house" | "senate", bioguideId: string): string {
   return chamber === "senate" ? `/senator/${bioguideId}` : `/member/${bioguideId}`
 }
 
-/* ------------------------------ Spending chart ----------------------------- */
-
 type Range = "6M" | "1Y" | "2Y" | "5Y" | "ALL"
 const RANGES: Range[] = ["6M", "1Y", "2Y", "5Y", "ALL"]
 const RANGE_DAYS: Record<Range, number> = {

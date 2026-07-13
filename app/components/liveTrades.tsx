@@ -46,9 +46,6 @@ function formatDate(value: string) {
   return dateFormatter.format(parsed)
 }
 
-// Quiver's live feed only carries the security type, not a company name, so the
-// Asset column shows a humanized type. Unknown codes fall through to the raw
-// value rather than being mislabeled.
 const ASSET_TYPE_LABELS: Record<string, string> = {
   Stock: "Stock",
   ST: "Stock",
@@ -62,9 +59,6 @@ function formatAssetType(value: string) {
   return ASSET_TYPE_LABELS[key] ?? key
 }
 
-// Poll the feed so newly-synced disclosures appear without a page reload. The
-// trades cron refreshes the source every 15 min; a 60s client poll picks those
-// up shortly after, while each request just reads the warm Redis/DB cache.
 const REFRESH_INTERVAL_MS = 60_000
 
 export default function LiveTrades() {
@@ -93,8 +87,6 @@ export default function LiveTrades() {
 
       }
       catch(err:any){
-        // Once trades are on screen, swallow transient refresh failures so a
-        // single blip doesn't replace the table with an error banner.
         if(active && !loaded) setError(err.message)
       }
 

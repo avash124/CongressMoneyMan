@@ -17,7 +17,6 @@ logger = logging.getLogger("db")
 
 _PAGE_SIZE = 1000
 
-# Keep strong references to fire-and-forget tasks so they aren't GC'd mid-flight.
 _write_back_tasks: set[asyncio.Task] = set()
 
 
@@ -103,9 +102,6 @@ async def _select_all_pages(table: str, params: dict[str, str], label: str) -> l
     return rows
 
 
-# --- members ---------------------------------------------------------------
-
-
 async def get_members_from_db(chamber: str) -> list[dict]:
     return await _select(
         "members",
@@ -151,9 +147,6 @@ async def upsert_members(rows: list[dict]) -> None:
         logger.error("upsert_members threw: %s", error)
 
 
-# --- trades ----------------------------------------------------------------
-
-
 async def get_recent_trades_from_db(limit: int = 1000) -> list[dict]:
     return await _select(
         "trades",
@@ -175,7 +168,6 @@ async def upsert_trades(rows: list[dict]) -> None:
         return
     deduped = list({row["trade_id"]: row for row in rows}.values())
     try:
-        # Chunk so a large live feed stays under the request payload limit.
         for batch in chunk(deduped, 500):
             _, error = await _request(
                 "POST",
@@ -192,10 +184,9 @@ async def upsert_trades(rows: list[dict]) -> None:
 
 
 async def get_all_trades() -> list[dict]:
-    return await _select_all_pages("trades", {"select": "*"}, "get_all_trades")
-
-
-# --- portfolios ------------------------------------------------------------
+    return await _select_all_pages(
+        "trades", {"select": "*", "order": "trade_id.asc"}, "get_all_trades"
+    )
 
 
 async def get_portfolios_from_db() -> list[dict]:
@@ -218,9 +209,6 @@ async def upsert_portfolios(rows: list[dict]) -> None:
             logger.error("upsert_portfolios: %s", error)
     except Exception as error:
         logger.error("upsert_portfolios threw: %s", error)
-
-
-# --- holdings ----------------------------------------------------------------
 
 
 async def get_holdings_from_db() -> list[dict]:
@@ -276,9 +264,6 @@ async def replace_holdings_for_members(
         logger.error("replace_holdings_for_members threw: %s", error)
 
 
-# --- FEC candidates ----------------------------------------------------------
-
-
 async def get_fec_candidate_from_db(bioguide_id: str) -> dict | None:
     rows = await _select(
         "fec_candidates",
@@ -310,9 +295,6 @@ async def upsert_fec_candidate(row: dict) -> None:
         logger.error("upsert_fec_candidate threw: %s", error)
 
 
-# --- PAC donations -----------------------------------------------------------
-
-
 async def get_pac_donations_from_db(bioguide_id: str) -> list[dict]:
     return await _select(
         "pac_donations",
@@ -335,6 +317,164 @@ async def get_pac_donations_by_name(pac_name: str) -> list[dict]:
         {"select": "*", "pac_name": f"eq.{pac_name}"},
         f"get_pac_donations_by_name({pac_name})",
     )
+
+
+async def get_trade_features_by_ids(feature_ids: list[str]) -> list[dict]:
+    if not feature_ids:
+        return []
+    return await _select(
+        "trade_features",
+        {"select": "*", "feature_id": f"in.({','.join(feature_ids)})"},
+        "get_trade_features_by_ids",
+    )
+
+
+async def get_priced_ticker_features(
+    asset_type: str | None = None, last_trade_since: str | None = None
+) -> list[dict]:
+    params = {
+        "select": "*",
+        "scope": "eq.ticker",
+        "est_pl_pct": "not.is.null",
+        "order": "feature_id.asc",
+    }
+    if asset_type:
+        params["asset_type"] = f"eq.{asset_type}"
+    if last_trade_since:
+        params["last_trade_date"] = f"gte.{last_trade_since}"
+    return await _select_all_pages(
+        "trade_features", params, "get_priced_ticker_features"
+    )
+
+
+async def upsert_trade_features(rows: list[dict]) -> None:
+    if not rows:
+        return
+    stamped = [{**row, "computed_at": now_iso()} for row in rows]
+    try:
+        for batch in chunk(stamped, 500):
+            _, error = await _request(
+                "POST",
+                "trade_features",
+                params={"on_conflict": "feature_id"},
+                json_body=batch,
+                prefer="resolution=merge-duplicates,return=minimal",
+            )
+            if error:
+                logger.error("upsert_trade_features: %s", error)
+                return
+    except Exception as error:
+        logger.error("upsert_trade_features threw: %s", error)
+
+
+async def get_asset_class_stats_from_db(
+    asset_types: list[str] | None = None,
+) -> list[dict]:
+    params = {"select": "*"}
+    if asset_types:
+        params["asset_type"] = f"in.({','.join(asset_types)})"
+    return await _select("asset_class_stats", params, "get_asset_class_stats_from_db")
+
+
+async def get_trade_features_by_scope(
+    scope: str, min_members: int | None = None
+) -> list[dict]:
+    params = {"select": "*", "scope": f"eq.{scope}", "order": "feature_id.asc"}
+    if min_members is not None:
+        params["member_count"] = f"gte.{min_members}"
+    return await _select_all_pages(
+        "trade_features", params, f"get_trade_features_by_scope({scope})"
+    )
+
+
+async def get_recent_trades_by_ticker(ticker: str, limit: int = 5) -> list[dict]:
+    return await _select(
+        "trades",
+        {
+            "select": "*",
+            "ticker": f"eq.{ticker}",
+            "order": "transaction_date.desc.nullslast",
+            "limit": str(limit),
+        },
+        f"get_recent_trades_by_ticker({ticker})",
+    )
+
+
+async def get_recent_trades_by_bioguide(bioguide_id: str, limit: int = 5) -> list[dict]:
+    return await _select(
+        "trades",
+        {
+            "select": "*",
+            "bioguide_id": f"eq.{bioguide_id}",
+            "order": "transaction_date.desc.nullslast",
+            "limit": str(limit),
+        },
+        f"get_recent_trades_by_bioguide({bioguide_id})",
+    )
+
+
+async def get_entity_cards_from_db() -> list[dict]:
+    return await _select_all_pages(
+        "entity_cards",
+        {"select": "card_id,card_text", "order": "card_id.asc"},
+        "get_entity_cards_from_db",
+    )
+
+
+async def upsert_entity_cards(rows: list[dict]) -> None:
+    if not rows:
+        return
+    stamped = [{**row, "updated_at": now_iso()} for row in rows]
+    try:
+        for batch in chunk(stamped, 100):
+            _, error = await _request(
+                "POST",
+                "entity_cards",
+                params={"on_conflict": "card_id"},
+                json_body=batch,
+                prefer="resolution=merge-duplicates,return=minimal",
+            )
+            if error:
+                logger.error("upsert_entity_cards: %s", error)
+                return
+    except Exception as error:
+        logger.error("upsert_entity_cards threw: %s", error)
+
+
+async def match_entity_cards(query_embedding: str, match_count: int) -> list[dict]:
+    """Similarity search via the match_entity_cards RPC; embedding is a
+    pgvector literal string like "[0.1,0.2,...]"."""
+    try:
+        data, error = await _request(
+            "POST",
+            "rpc/match_entity_cards",
+            json_body={"query_embedding": query_embedding, "match_count": match_count},
+        )
+        if error:
+            logger.error("match_entity_cards: %s", error)
+            return []
+        return data or []
+    except Exception as error:
+        logger.error("match_entity_cards threw: %s", error)
+        return []
+
+
+async def upsert_asset_class_stats(rows: list[dict]) -> None:
+    if not rows:
+        return
+    stamped = [{**row, "computed_at": now_iso()} for row in rows]
+    try:
+        _, error = await _request(
+            "POST",
+            "asset_class_stats",
+            params={"on_conflict": "asset_type"},
+            json_body=stamped,
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
+        if error:
+            logger.error("upsert_asset_class_stats: %s", error)
+    except Exception as error:
+        logger.error("upsert_asset_class_stats threw: %s", error)
 
 
 async def replace_pac_donations(bioguide_id: str, rows: list[dict]) -> None:

@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/sync-fec",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-features",
+      "schedule": "0 8 * * *"
     }
   ]
 }

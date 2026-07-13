@@ -1,12 +1,10 @@
 import Link from "next/link"
+import { Suspense } from "react"
 import { fetchBackend } from "@/lib/backend"
 import type { TradeDetail } from "@/types/trade"
+import InsightCard from "@/components/InsightCard"
 import StockTradeView from "@/components/StockTradeView"
 
-// Price snapshots are immutable history; cache the rendered page and refresh in
-// the background every 15 min like the member/senator routes. Empty
-// generateStaticParams opts this dynamic [id] route into ISR so repeat visits
-// serve from cache instead of re-hitting Massive + Quiver each request.
 export const revalidate = 900
 
 export async function generateStaticParams() {
@@ -31,7 +29,19 @@ export default async function TradePage({
         </Link>
 
         {detail ? (
-          <StockTradeView detail={detail} />
+          <>
+            <StockTradeView detail={detail} />
+            <Suspense
+              fallback={
+                <div className="h-48 w-full animate-pulse rounded-xl bg-slate-200" />
+              }
+            >
+              <InsightCard
+                path={`/api/insights/asset/${encodeURIComponent(detail.ticker)}`}
+                title={`Congressional Trading in ${detail.ticker}`}
+              />
+            </Suspense>
+          </>
         ) : (
           <p className="text-gray-600">Trade not found.</p>
         )}

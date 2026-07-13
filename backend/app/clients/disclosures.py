@@ -30,15 +30,8 @@ from ..core.http import shared_client
 
 logger = logging.getLogger("disclosures")
 
-# --- shared asset-range parsing ---------------------------------------------
 
-# FD value ranges render as "$1,001 - $15,000". The low bound can also appear
-# alone for the smallest band; we treat a lone bound as its own midpoint.
 _RANGE = re.compile(r"\$([\d,]+)\s*-\s*\$([\d,]+)")
-# Every House asset row carries a two-letter asset-type code in brackets
-# (e.g. [ST] stock, [RP] real property, [PE] pension). Anchoring on it and
-# taking the first range that follows isolates the asset-value column from the
-# income column that trails it.
 _ASSET_CODE = re.compile(r"\[[A-Z]{2}\]")
 
 
@@ -46,16 +39,12 @@ def _midpoint(low: str, high: str) -> float:
     return (int(low.replace(",", "")) + int(high.replace(",", ""))) / 2
 
 
-# --- House (Clerk) ----------------------------------------------------------
-
 _HOUSE_ZIP_URL = (
     "https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{year}FD.ZIP"
 )
 _HOUSE_PDF_URL = (
     "https://disclosures-clerk.house.gov/public_disc/financial-pdfs/{year}/{doc_id}.pdf"
 )
-# "O" = original annual report, the only filing type with a full asset schedule
-# (P = periodic transaction, C = candidate, X = extension, etc.).
 _ANNUAL_FILING_TYPE = "O"
 
 
@@ -103,8 +92,6 @@ def _estimate_from_house_text(text: str) -> tuple[float, int]:
     """
     header = re.search(r"Value of Asset", text)
     start = header.end() if header else 0
-    # Schedule A ends at Schedule B ("Transactions"); the extracted heading is
-    # letter-spaced ("S    B :"), so match loosely on the section letter.
     section_b = re.search(r"S\s*B\s*:", text[start:])
     body = text[start : start + section_b.start()] if section_b else text[start:]
 
@@ -139,8 +126,6 @@ async def house_net_worth(doc_id: str, year: int) -> tuple[float, int] | None:
         return None
     return _estimate_from_house_text(text)
 
-
-# --- Senate (eFD) -----------------------------------------------------------
 
 _EFD_BASE = "https://efdsearch.senate.gov"
 _EFD_HOME = f"{_EFD_BASE}/search/home/"
@@ -187,7 +172,7 @@ async def senate_annual_filings(year: int) -> list[dict]:
                 "csrfmiddlewaretoken": token,
                 "start": str(start),
                 "length": str(page_size),
-                "report_types": "[7]",  # annual reports
+                "report_types": "[7]",
                 "filer_types": "[]",
                 "submitted_start_date": f"01/01/{year} 00:00:00",
                 "submitted_end_date": "",
@@ -209,7 +194,6 @@ async def senate_annual_filings(year: int) -> list[dict]:
         if not rows:
             break
         for row in rows:
-            # row = [first, last, "Last, First (Senator|Candidate)", link_html, date]
             filer_type = row[2] if len(row) > 2 else ""
             if "Senator" not in filer_type:
                 continue
@@ -259,9 +243,6 @@ async def senate_net_worth(report_url: str) -> tuple[float, int] | None:
     if response.status_code >= 400:
         return None
     return _estimate_from_senate_html(response.text)
-
-
-# --- filing year ------------------------------------------------------------
 
 
 def candidate_filing_years() -> list[int]:

@@ -10,8 +10,6 @@ type RankingRow = {
   state: string
   stockHoldings: number | null
   netWorth: number | null
-  // Present on the net-worth column: "quiver" = live estimate, "fd" = annual
-  // financial-disclosure estimate (net worth only), with the filing year.
   netWorthSource?: "quiver" | "fd"
   netWorthAsOf?: number
 }

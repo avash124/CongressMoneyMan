@@ -27,7 +27,6 @@ create table if not exists trades (
 
 create index if not exists trades_bioguide_id_idx on trades (bioguide_id);
 
--- Live net-worth / stock-holdings snapshot per member (drives the rankings).
 create table if not exists portfolio_data (
   bioguide_id    text primary key,
   net_worth      numeric,
@@ -35,7 +34,6 @@ create table if not exists portfolio_data (
   fetched_at     timestamptz not null default now()
 );
 
--- Resolved FEC candidate + headline totals per member.
 create table if not exists fec_candidates (
   bioguide_id   text primary key,
   candidate_id  text,

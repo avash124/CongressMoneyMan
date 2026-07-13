@@ -1,0 +1,31 @@
+{
+  "label": "ablation",
+  "snapshot": "ml/snapshots/trades-a8b7633c7eb854bf.parquet",
+  "n_rows": 100922,
+  "today": "2026-07-13",
+  "horizon_days": 30,
+  "train_folds": 111,
+  "eval_folds": 191,
+  "train_frac": 0.7,
+  "train_stride": 4,
+  "seeds": [
+    1337,
+    99
+  ],
+  "aux_snapshots": {
+    "prices": "ml/snapshots/prices-8dacff246e3e9e22.parquet",
+    "profiles": "ml/snapshots/profiles-3b1866aaa66f445d.parquet",
+    "members": "ml/snapshots/members-4edefcc5a4d7c03a.parquet",
+    "committees": null,
+    "pac": null
+  },
+  "available_families": [
+    "market",
+    "member"
+  ],
+  "subsets": [
+    "base",
+    "+market",
+    "+member"
+  ]
+}

@@ -1,6 +1,3 @@
-// Server-side helper for calling the Python backend (backend/) from server
-// components. Client components keep fetching relative /api/* URLs, which
-// next.config.ts rewrites to the same server.
 const BACKEND_URL = process.env.FASTAPI_URL ?? "http://127.0.0.1:8000"
 
 export async function fetchBackend<T>(path: string): Promise<T | null> {

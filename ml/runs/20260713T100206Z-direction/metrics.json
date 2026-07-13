@@ -1,0 +1,28 @@
+{
+  "1337": {
+    "n_events": 103047,
+    "n_buys": 49249,
+    "head": {
+      "balanced_accuracy": 0.5960138636119489,
+      "auc": 0.6438693448242138
+    },
+    "baseline": {
+      "balanced_accuracy": 0.5483752155751067,
+      "auc": 0.5789939054644253
+    },
+    "head_beats_baseline": true
+  },
+  "99": {
+    "n_events": 103047,
+    "n_buys": 49249,
+    "head": {
+      "balanced_accuracy": 0.5882643564187549,
+      "auc": 0.6334691229334004
+    },
+    "baseline": {
+      "balanced_accuracy": 0.5483752155751067,
+      "auc": 0.5789939054644253
+    },
+    "head_beats_baseline": true
+  }
+}
