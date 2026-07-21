@@ -163,11 +163,11 @@ function PerformanceChart({ ticker }: { ticker: string }) {
             Price Performance
           </h3>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900">
+            <span className="text-2xl font-mono font-bold tabular-nums text-slate-900">
               {last != null ? priceFormatter.format(last) : "—"}
             </span>
             {change != null && changePct != null ? (
-              <span className="text-sm font-semibold" style={{ color }}>
+              <span className="text-sm font-mono font-semibold tabular-nums" style={{ color }}>
                 {up ? "▲" : "▼"} {priceFormatter.format(Math.abs(change))} (
                 {formatPct(changePct)})
               </span>
@@ -178,11 +178,11 @@ function PerformanceChart({ ticker }: { ticker: string }) {
 
       <div className="mt-4 min-h-[16rem] flex-1">
         {loading ? (
-          <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-64 items-center justify-center text-sm text-slate-600">
             Loading chart…
           </div>
         ) : series.length === 0 ? (
-          <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-64 items-center justify-center text-sm text-slate-600">
             No price data available for this range.
           </div>
         ) : (
@@ -235,7 +235,7 @@ function PerformanceChart({ ticker }: { ticker: string }) {
             key={r}
             type="button"
             onClick={() => setRange(r)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition focus-ring ${
               r === range
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -296,7 +296,7 @@ function OwnershipPanel({ data }: { data: TickerHolders }) {
       </div>
 
       {holders.length === 0 ? (
-        <p className="text-sm text-slate-400">No disclosed holders found.</p>
+        <p className="text-sm text-slate-600">No disclosed holders found.</p>
       ) : (
         <>
           <div className="relative mx-auto h-52 w-52 shrink-0">
@@ -323,17 +323,17 @@ function OwnershipPanel({ data }: { data: TickerHolders }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              <span className="text-[10px] uppercase tracking-wide text-slate-500">
                 Total Held
               </span>
-              <span className="text-xl font-bold text-slate-900">
+              <span className="text-xl font-mono font-bold tabular-nums text-slate-900">
                 {formatCurrency(totalValue)}
               </span>
             </div>
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Top Holders
             </p>
             <ul className="space-y-2">
@@ -341,7 +341,7 @@ function OwnershipPanel({ data }: { data: TickerHolders }) {
                 <li key={h.bioguideId}>
                   <Link
                     href={memberHref(h)}
-                    className="group flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 transition hover:bg-blue-50 hover:ring-blue-200"
+                    className="group flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 transition hover:bg-blue-50 hover:ring-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <span
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -361,14 +361,14 @@ function OwnershipPanel({ data }: { data: TickerHolders }) {
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="block font-semibold text-slate-900">
+                      <span className="block font-mono font-semibold tabular-nums text-slate-900">
                         {formatCurrency(h.value)}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs font-mono tabular-nums text-slate-600">
                         {totalValue > 0 ? `${((h.value / totalValue) * 100).toFixed(1)}%` : ""}
                       </span>
                     </span>
-                    <span className="ml-1 text-slate-300 transition group-hover:text-blue-500">
+                    <span className="ml-1 text-slate-600 transition group-hover:text-blue-500">
                       →
                     </span>
                   </Link>
@@ -434,11 +434,11 @@ function StockModal({
         className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 px-6 py-6 text-white">
+        <div className="relative bg-slate-900 px-6 py-6 text-white">
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-lg font-medium text-white transition hover:bg-white/30"
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-lg font-medium text-white transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             aria-label="Close"
           >
             ×
@@ -463,7 +463,7 @@ function StockModal({
         <div className="grid gap-6 p-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-100 bg-white p-5">
             {loading || !holders ? (
-              <div className="flex h-72 items-center justify-center text-sm text-slate-400">
+              <div className="flex h-72 items-center justify-center text-sm text-slate-600">
                 Loading ownership…
               </div>
             ) : (
@@ -508,7 +508,7 @@ function HoldingsTable({
     <section className="dashboard-card">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-6 py-5">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">
+          <h2 className="text-xl font-semibold text-slate-900">
             Most-Held Stocks by Portfolio Value
           </h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -554,7 +554,7 @@ function HoldingsTable({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-400">
+                <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-600">
                   No stocks match your search.
                 </td>
               </tr>
@@ -563,17 +563,20 @@ function HoldingsTable({
               <tr
                 key={row.ticker}
                 onClick={() => onSelect(row)}
-                className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(row) } }}
+                tabIndex={0}
+                role="button"
+                className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
               >
-                <td className="px-4 py-3 font-medium text-slate-500">{index + 1}</td>
+                <td className="px-4 py-3 font-mono font-medium tabular-nums text-slate-500">{index + 1}</td>
                 <td className="px-4 py-3">
-                  <span className="font-semibold text-gray-900">{row.ticker}</span>
+                  <span className="font-mono font-semibold text-slate-900">{row.ticker}</span>
                   <span className="ml-2 hidden text-xs text-slate-500 sm:inline">
                     {row.name}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{row.sector}</td>
-                <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-slate-900">
                   {formatCurrency(row.totalValue)}
                 </td>
               </tr>
@@ -610,7 +613,7 @@ function SegmentedToggle<T extends string>({
           key={key}
           type="button"
           onClick={() => onChange(key)}
-          className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition focus-ring ${
             value === key ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
           }`}
         >
@@ -642,7 +645,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(column)}
         aria-label={`Sort by ${label}`}
-        className="inline-flex items-center gap-1 uppercase tracking-[0.18em] transition hover:text-white"
+        className="inline-flex items-center gap-1 rounded uppercase tracking-[0.18em] transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
       >
         {label}
         <span className={`text-[10px] ${active ? "text-white" : "text-slate-500"}`}>
@@ -701,7 +704,7 @@ function PerformanceTable({
     <section className="dashboard-card">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-6 py-5">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">
+          <h2 className="text-xl font-semibold text-slate-900">
             {view === "gainers" ? "Best" : "Worst"}-Performing Stocks by Congressional Gain
           </h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -749,7 +752,7 @@ function PerformanceTable({
               <tr>
                 <td
                   colSpan={5}
-                  className="px-4 py-10 text-center text-sm text-slate-400"
+                  className="px-4 py-10 text-center text-sm text-slate-600"
                 >
                   {view === "gainers"
                     ? "No traded stocks are showing a gain right now."
@@ -761,26 +764,29 @@ function PerformanceTable({
               <tr
                 key={row.ticker}
                 onClick={() => onSelect(toModalRow(row))}
-                className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(toModalRow(row)) } }}
+                tabIndex={0}
+                role="button"
+                className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
               >
-                <td className="px-4 py-3 font-medium text-slate-500">{index + 1}</td>
+                <td className="px-4 py-3 font-mono font-medium tabular-nums text-slate-500">{index + 1}</td>
                 <td className="px-4 py-3">
-                  <span className="font-semibold text-gray-900">{row.ticker}</span>
+                  <span className="font-mono font-semibold text-slate-900">{row.ticker}</span>
                   <span className="ml-2 hidden text-xs text-slate-500 sm:inline">
                     {row.name}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{row.sector}</td>
                 <td
-                  className={`px-4 py-3 text-right font-semibold ${
-                    row.estGain >= 0 ? "text-emerald-600" : "text-red-600"
+                  className={`px-4 py-3 text-right font-mono font-semibold tabular-nums ${
+                    row.estGain >= 0 ? "text-green-600" : "text-red-600"
                   }`}
                 >
                   {formatCurrency(row.estGain)}
                 </td>
                 <td
-                  className={`px-4 py-3 text-right font-semibold ${
-                    row.gainPct >= 0 ? "text-emerald-600" : "text-red-600"
+                  className={`px-4 py-3 text-right font-mono font-semibold tabular-nums ${
+                    row.gainPct >= 0 ? "text-green-600" : "text-red-600"
                   }`}
                 >
                   {formatPct(row.gainPct)}

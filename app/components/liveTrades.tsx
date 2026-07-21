@@ -31,7 +31,7 @@ function getPartyClasses(party: LiveTrade["party"]) {
   if (party === "R")
     return "bg-red-50 text-red-700 ring-1 ring-red-200"
 
-  return "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
+  return "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -112,7 +112,7 @@ export default function LiveTrades() {
 
   if(!trades){
     return(
-      <div className="dashboard-card p-10 text-gray-500">
+      <div className="dashboard-card p-10 text-slate-500">
         Loading live trades...
       </div>
     )
@@ -122,9 +122,9 @@ export default function LiveTrades() {
 
 <section className="dashboard-card card-hover">
 
-<div className="px-6 py-5 border-b border-gray-200">
+<div className="px-6 py-5 border-b border-slate-200">
 
-<h2 className="text-xl font-semibold text-gray-900">
+<h2 className="text-xl font-semibold text-slate-900">
 Recent Congressional Trades
 </h2>
 
@@ -134,7 +134,7 @@ Recent Congressional Trades
 
 <table className="min-w-full text-sm">
 
-<thead className="sticky top-0 bg-gray-900 text-gray-200 text-xs uppercase">
+<thead className="sticky top-0 bg-slate-900 text-slate-200 text-xs uppercase">
 
 <tr>
 
@@ -157,14 +157,14 @@ Recent Congressional Trades
 
 <tr
 key={trade.id}
-className="border-b border-gray-200 hover:bg-gray-50"
+className="border-b border-slate-200 hover:bg-slate-50"
 >
 
-<td className="px-4 py-3 text-gray-600">
+<td className="px-4 py-3 font-mono tabular-nums text-slate-600">
 {formatDate(trade.filedAt)}
 </td>
 
-<td className="px-4 py-3 text-gray-600">
+<td className="px-4 py-3 font-mono tabular-nums text-slate-600">
 {formatDate(trade.tradeDate)}
 </td>
 
@@ -176,7 +176,7 @@ href={
     ? `/senator/${trade.bioguideId}`
     : `/member/${trade.bioguideId}`
 }
-className="font-semibold text-gray-900 hover:text-blue-600"
+className="rounded-sm font-semibold text-slate-900 hover:text-blue-600 focus-ring"
 >
 
 {trade.memberName}
@@ -193,20 +193,20 @@ className="font-semibold text-gray-900 hover:text-blue-600"
 
 </td>
 
-<td className="px-4 py-3 font-semibold">
+<td className="px-4 py-3 font-mono font-semibold">
 {trade.ticker === "-" || !trade.id ? (
   trade.ticker === "-" ? "—" : trade.ticker
 ) : (
   <Link
     href={`/trade/${encodeURIComponent(trade.id)}`}
-    className="text-blue-600 hover:underline"
+    className="rounded-sm text-blue-600 hover:underline focus-ring"
   >
     {trade.ticker}
   </Link>
 )}
 </td>
 
-<td className="px-4 py-3 text-gray-600">
+<td className="px-4 py-3 text-slate-600">
 {formatAssetType(trade.assetType)}
 </td>
 
@@ -214,7 +214,7 @@ className="font-semibold text-gray-900 hover:text-blue-600"
 {trade.transactionType}
 </td>
 
-<td className="px-4 py-3 text-right font-semibold">
+<td className="px-4 py-3 text-right font-mono font-semibold tabular-nums">
 {trade.amount}
 </td>
 

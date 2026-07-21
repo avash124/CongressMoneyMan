@@ -24,7 +24,7 @@ export default async function TradePage({
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-950">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-        <Link href="/Trades" className="text-sm text-blue-600 hover:underline">
+        <Link href="/Trades" className="rounded-sm text-sm text-blue-600 hover:underline focus-ring">
           ← Back to trades
         </Link>
 
@@ -43,7 +43,7 @@ export default async function TradePage({
             </Suspense>
           </>
         ) : (
-          <p className="text-gray-600">Trade not found.</p>
+          <p className="text-slate-600">Trade not found.</p>
         )}
       </div>
     </main>

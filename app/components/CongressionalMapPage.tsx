@@ -72,10 +72,26 @@ export default function CongressionalMapPage() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-950">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-4xl font-bold tracking-tight text-center">Congressional District Map</h1>
+    <div className="flex flex-col gap-10">
+      {/* Hero — the thesis, opened with the platform's own promise. */}
+      <section>
+        <h1 className="font-display max-w-4xl text-[2.5rem] font-medium leading-[1.05] tracking-[-0.02em] text-ink text-balance sm:text-[3.25rem]">
+          Follow the money in Congress.
+        </h1>
+        <p className="mt-5 max-w-2xl text-lg leading-relaxed text-body text-pretty">
+          Every disclosed trade, dollar of net worth, and PAC check —
+          consolidated, sourced, and turned into a forward read on what members
+          are likely to trade next.
+        </p>
+      </section>
+
+      <div className="ledger-rule" role="presentation" />
+
+      {/* The live artifact — start the investigation from a district. */}
+      <section className="flex flex-col gap-4">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="field-label">Start with a district</h2>
+          <span className="field-label">119th Congress</span>
         </div>
 
         {loadError ? (
@@ -85,13 +101,13 @@ export default function CongressionalMapPage() {
         ) : null}
 
         {memberLoadError ? (
-          <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700">
+          <div className="rounded-xl border border-line bg-white px-4 py-3 text-sm text-body">
             {memberLoadError}
           </div>
         ) : null}
 
         <CongressionalMap districtGeoJson={districts} members={members} />
-      </div>
-    </main>
+      </section>
+    </div>
   )
 }

@@ -12,3 +12,4 @@ export async function fetchBackend<T>(path: string): Promise<T | null> {
     return null
   }
 }
+  
