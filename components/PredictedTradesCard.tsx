@@ -21,10 +21,11 @@ export default async function PredictedTradesCard({ id }: { id: string }) {
 
   return (
     <div className="dashboard-card p-8 h-fit">
-      <h2 className="text-xl font-semibold text-gray-900 mb-1">
+      <h2 className="font-display text-2xl leading-tight text-ink">
         Predicted Next Trades
       </h2>
-      <p className="text-sm text-slate-600 mb-4">
+      <div className="ledger-rule mt-4 mb-4" role="presentation" />
+      <p className="mb-4 text-sm text-body">
         {asOf
           ? `Tickers this member is most likely to trade within ${HORIZON_DAYS} days of ${asOf}${
               windowEnd ? ` (through ${windowEnd})` : ""
@@ -33,12 +34,12 @@ export default async function PredictedTradesCard({ id }: { id: string }) {
       </p>
 
       {predictions.length === 0 ? (
-        <p className="text-sm text-slate-500">No prediction available yet.</p>
+        <p className="text-sm text-muted">No prediction available yet.</p>
       ) : (
         <PredictedTradesList bioguideId={id} predictions={predictions} />
       )}
 
-      <p className="mt-6 text-xs text-gray-400">
+      <p className="mt-6 text-xs text-muted">
         Experimental model prediction from disclosed-trade patterns — not
         financial advice.
       </p>

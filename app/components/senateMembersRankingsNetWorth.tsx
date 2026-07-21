@@ -57,7 +57,7 @@ function RankingTable({
   return (
     <section className="dashboard-card card-hover">
       <div className="border-b border-slate-200 px-6 py-5">
-        <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
         <p className="mt-1 text-sm text-slate-600">{description}</p>
       </div>
 
@@ -78,13 +78,13 @@ function RankingTable({
                 key={`${valueKey}-${row.id}`}
                 className="border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70"
               >
-                <td className="px-4 py-3 font-medium text-slate-500">
+                <td className="px-4 py-3 font-mono font-medium tabular-nums text-slate-500">
                   {index + 1}
                 </td>
                 <td className="px-4 py-3">
                   <Link
                     href={`/senator/${row.id}`}
-                    className="font-semibold text-gray-900 transition hover:text-slate-600"
+                    className="rounded-sm font-semibold text-slate-900 transition hover:text-slate-600 focus-ring"
                   >
                     {row.name}
                   </Link>
@@ -97,9 +97,9 @@ function RankingTable({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{row.state}</td>
-                <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                <td className="px-4 py-3 text-right font-semibold text-slate-900">
                   <span className="inline-flex items-center justify-end gap-1.5">
-                    {formatCurrency(row[valueKey])}
+                    <span className="font-mono tabular-nums">{formatCurrency(row[valueKey])}</span>
                     {valueKey === "netWorth" &&
                       row.netWorthSource === "fd" &&
                       row.netWorth !== null && (

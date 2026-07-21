@@ -91,7 +91,7 @@ const SLICE_COLORS = [
 function partyClasses(party: PacDonationRow["party"]) {
   if (party === "D") return "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
   if (party === "R") return "bg-red-50 text-red-700 ring-1 ring-red-200"
-  return "bg-gray-100 text-gray-700 ring-1 ring-gray-200"
+  return "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
 }
 
 function partyColor(party: string): string {
@@ -166,23 +166,23 @@ function PacSpendingChart({
           Spending Over Time
         </h3>
         <div className="mt-1 flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-slate-900">
+          <span className="text-2xl font-mono font-bold tabular-nums text-slate-900">
             {currencyFormatter.format(rangeTotal)}
           </span>
           <span className="text-sm font-medium text-slate-500">disbursed in range</span>
         </div>
-        <p className="mt-0.5 text-xs text-slate-400">
+        <p className="mt-0.5 text-xs text-slate-600">
           Total disbursements per FEC reporting period
         </p>
       </div>
 
       <div className="mt-4 min-h-[16rem] flex-1">
         {points === null ? (
-          <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-64 items-center justify-center text-sm text-slate-600">
             Loading spending history…
           </div>
         ) : series.length === 0 ? (
-          <div className="flex h-64 items-center justify-center px-4 text-center text-sm text-slate-400">
+          <div className="flex h-64 items-center justify-center px-4 text-center text-sm text-slate-600">
             No FEC spending history available for this PAC in this range.
           </div>
         ) : (
@@ -231,7 +231,7 @@ function PacSpendingChart({
             key={r}
             type="button"
             onClick={() => onRangeChange(r)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition focus-ring ${
               r === range
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -313,7 +313,7 @@ function PacRecipientsPanel({ data }: { data: PacRecipients }) {
       </div>
 
       {recipients.length === 0 ? (
-        <p className="text-sm text-slate-400">No recipients found for this PAC.</p>
+        <p className="text-sm text-slate-600">No recipients found for this PAC.</p>
       ) : (
         <>
           <div className="relative mx-auto h-52 w-52 shrink-0">
@@ -340,17 +340,17 @@ function PacRecipientsPanel({ data }: { data: PacRecipients }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
+              <span className="text-[10px] uppercase tracking-wide text-slate-500">
                 Total Given
               </span>
-              <span className="text-xl font-bold text-slate-900">
+              <span className="text-xl font-mono font-bold tabular-nums text-slate-900">
                 {currencyFormatter.format(totalAmount)}
               </span>
             </div>
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Top Recipients
             </p>
             <ul className="space-y-2">
@@ -358,7 +358,7 @@ function PacRecipientsPanel({ data }: { data: PacRecipients }) {
                 <li key={r.bioguideId}>
                   <Link
                     href={memberHref(r.chamber, r.bioguideId)}
-                    className="group flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 transition hover:bg-blue-50 hover:ring-blue-200"
+                    className="group flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 transition hover:bg-blue-50 hover:ring-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <span
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -378,16 +378,16 @@ function PacRecipientsPanel({ data }: { data: PacRecipients }) {
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="block font-semibold text-slate-900">
+                      <span className="block font-mono font-semibold tabular-nums text-slate-900">
                         {currencyFormatter.format(r.amount)}
                       </span>
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs font-mono tabular-nums text-slate-600">
                         {totalAmount > 0
                           ? `${((r.amount / totalAmount) * 100).toFixed(1)}%`
                           : ""}
                       </span>
                     </span>
-                    <span className="ml-1 text-slate-300 transition group-hover:text-blue-500">
+                    <span className="ml-1 text-slate-600 transition group-hover:text-blue-500">
                       →
                     </span>
                   </Link>
@@ -462,7 +462,7 @@ function PacWindowRecipients({ pacName, range }: { pacName: string; range: Range
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Members Donated To · {RANGE_LABELS[range]}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-600">
             Direct FEC contributions to current House &amp; Senate members in this window
           </p>
         </div>
@@ -477,11 +477,11 @@ function PacWindowRecipients({ pacName, range }: { pacName: string; range: Range
 
       <div className="mt-3 max-h-72 overflow-auto rounded-xl ring-1 ring-slate-100">
         {feed === null ? (
-          <div className="flex h-32 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-32 items-center justify-center text-sm text-slate-600">
             Loading contributions…
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex h-32 items-center justify-center px-4 text-center text-sm text-slate-400">
+          <div className="flex h-32 items-center justify-center px-4 text-center text-sm text-slate-600">
             No itemized contributions to current members in this range.
           </div>
         ) : (
@@ -503,11 +503,11 @@ function PacWindowRecipients({ pacName, range }: { pacName: string; range: Range
                   key={r.member.bioguideId}
                   className="border-b border-slate-100 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50"
                 >
-                  <td className="px-3 py-2 font-medium text-slate-400">{i + 1}</td>
+                  <td className="px-3 py-2 font-mono font-medium tabular-nums text-slate-500">{i + 1}</td>
                   <td className="px-3 py-2">
                     <Link
                       href={memberHref(r.member.chamber, r.member.bioguideId)}
-                      className="font-semibold text-gray-900 hover:text-blue-600"
+                      className="rounded-sm font-semibold text-slate-900 hover:text-blue-600 focus-ring"
                     >
                       {r.member.name}
                     </Link>
@@ -524,9 +524,9 @@ function PacWindowRecipients({ pacName, range }: { pacName: string; range: Range
                   <td className="px-3 py-2 text-slate-600">
                     {r.member.chamber === "senate" ? "Senate" : "House"}
                   </td>
-                  <td className="px-3 py-2 text-slate-600">{dateFmt.format(r.lastDate)}</td>
-                  <td className="px-3 py-2 text-right text-slate-500">{r.count}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                  <td className="px-3 py-2 font-mono tabular-nums text-slate-600">{dateFmt.format(r.lastDate)}</td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-500">{r.count}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold tabular-nums text-slate-900">
                     {currencyFormatter.format(r.total)}
                   </td>
                 </tr>
@@ -584,11 +584,11 @@ function PacModal({ pacName, onClose }: { pacName: string; onClose: () => void }
         className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 px-6 py-6 text-white">
+        <div className="relative bg-slate-900 px-6 py-6 text-white">
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-lg font-medium text-white transition hover:bg-white/30"
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-lg font-medium text-white transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             aria-label="Close"
           >
             ×
@@ -613,7 +613,7 @@ function PacModal({ pacName, onClose }: { pacName: string; onClose: () => void }
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-2xl border border-slate-100 bg-white p-5">
               {loading || !recipients ? (
-                <div className="flex h-72 items-center justify-center text-sm text-slate-400">
+                <div className="flex h-72 items-center justify-center text-sm text-slate-600">
                   Loading recipients…
                 </div>
               ) : (
@@ -698,7 +698,7 @@ export default function PacDonations() {
     <section className="dashboard-card">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 px-6 py-5">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">PAC Donations to Congress</h2>
+          <h2 className="text-xl font-semibold text-slate-900">PAC Donations to Congress</h2>
           <p className="mt-1 text-sm text-slate-600">
             Largest PAC contributions to each House and Senate member for the current cycle.
             Click any row for a PAC&apos;s recipients and spending history. Showing{" "}
@@ -744,7 +744,7 @@ export default function PacDonations() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-600">
                   No PAC donations match your filters.
                 </td>
               </tr>
@@ -753,19 +753,22 @@ export default function PacDonations() {
                 <tr
                   key={`${row.bioguideId}-${row.pacName}-${index}`}
                   onClick={() => setSelectedPac(row.pacName)}
-                  className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50"
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedPac(row.pacName) } }}
+                  tabIndex={0}
+                  role="button"
+                  className="cursor-pointer border-b border-slate-200 text-sm text-slate-700 odd:bg-slate-50/70 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
                 >
-                  <td className="px-4 py-3 font-medium text-slate-500">{index + 1}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">{row.pacName}</td>
+                  <td className="px-4 py-3 font-mono font-medium tabular-nums text-slate-500">{index + 1}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-900">{row.pacName}</td>
                   <td className="px-4 py-3">
                     <Link
                       href={memberHref(row.chamber, row.bioguideId)}
                       onClick={(e) => e.stopPropagation()}
-                      className="font-semibold text-gray-900 hover:text-blue-600"
+                      className="rounded-sm font-semibold text-slate-900 hover:text-blue-600 focus-ring"
                     >
                       {row.memberName}
                     </Link>
-                    <span className="ml-2 text-xs text-slate-400">{row.state}</span>
+                    <span className="ml-2 text-xs text-slate-600">{row.state}</span>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -779,7 +782,7 @@ export default function PacDonations() {
                   <td className="px-4 py-3 text-slate-600">
                     {row.chamber === "senate" ? "Senate" : "House"}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                  <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums text-slate-900">
                     {currencyFormatter.format(row.amount)}
                   </td>
                 </tr>

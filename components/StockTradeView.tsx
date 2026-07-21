@@ -67,8 +67,8 @@ function ChartPanel({
     <div className="dashboard-card p-6">
       <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          <p className="text-sm text-gray-500">{formatDate(date)}</p>
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+          <p className="text-sm text-slate-500">{formatDate(date)}</p>
         </div>
         <span className="text-2xl font-bold" style={{ color }}>
           {price != null ? priceFmt.format(price) : "—"}
@@ -109,7 +109,7 @@ function ChartPanel({
           </AreaChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex h-[360px] items-center justify-center text-sm text-gray-400">
+        <div className="flex h-[360px] items-center justify-center text-sm text-slate-600">
           {isDaily
             ? "No recent price data available"
             : "No intraday chart available for this day"}
@@ -127,34 +127,34 @@ function ProfitLossCard({ pl }: { pl: ProfitLoss }) {
 
   return (
     <div className="dashboard-card p-6">
-      <h2 className="mb-4 text-lg font-semibold text-gray-900">
+      <h2 className="mb-4 text-lg font-semibold text-slate-900">
         Estimated {gain ? "Profit" : "Loss"}{" "}
         {pl.exitBasis === "current" ? "(unrealized)" : "(realized)"}
       </h2>
 
       <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
         <div>
-          <p className="text-sm text-gray-500">Estimated {gain ? "gain" : "loss"} range</p>
-          <p className="text-2xl font-bold" style={{ color }}>
+          <p className="text-sm text-slate-500">Estimated {gain ? "gain" : "loss"} range</p>
+          <p className="text-2xl font-mono font-bold tabular-nums" style={{ color }}>
             {formatSigned(lo)} – {formatSigned(hi)}
           </p>
         </div>
 
         <div>
-          <p className="text-sm text-gray-500">Percentage</p>
-          <p className="text-2xl font-bold" style={{ color }}>
+          <p className="text-sm text-slate-500">Percentage</p>
+          <p className="text-2xl font-mono font-bold tabular-nums" style={{ color }}>
             {gain ? "+" : ""}
             {pl.pctChange.toFixed(2)}%
           </p>
         </div>
 
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-slate-500">
           <p>
-            Buy {priceFmt.format(pl.buyPrice)} →{" "}
+            Buy <span className="font-mono tabular-nums">{priceFmt.format(pl.buyPrice)}</span> →{" "}
             {pl.exitBasis === "sale" ? "Sell" : "Current"}{" "}
-            {priceFmt.format(pl.exitPrice)}
+            <span className="font-mono tabular-nums">{priceFmt.format(pl.exitPrice)}</span>
           </p>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-slate-600">
             Range applies the price move to the disclosed purchase amount.
           </p>
         </div>
@@ -173,24 +173,24 @@ export default function StockTradeView({ detail }: { detail: TradeDetail }) {
       <div className="dashboard-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-mono font-bold text-slate-900">
               {detail.ticker || "—"}
             </h1>
             {detail.assetName ? (
-              <p className="text-gray-500">{detail.assetName}</p>
+              <p className="text-slate-500">{detail.assetName}</p>
             ) : null}
           </div>
           {detail.bioguideId ? (
             <Link
               href={memberHref}
-              className="text-sm font-semibold text-blue-600 hover:underline"
+              className="rounded-sm text-sm font-semibold text-blue-600 hover:underline focus-ring"
             >
               {detail.memberName || "View member"} →
             </Link>
           ) : null}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-600">
           {detail.buy ? (
             <span>
               Bought {formatDate(detail.buy.date)} · {detail.buy.range || "—"}
@@ -201,7 +201,7 @@ export default function StockTradeView({ detail }: { detail: TradeDetail }) {
               Sold {formatDate(detail.sell.date)} · {detail.sell.range || "—"}
             </span>
           ) : (
-            <span className="text-gray-400">Position not yet sold</span>
+            <span className="text-slate-600">Position not yet sold</span>
           )}
         </div>
       </div>
@@ -209,7 +209,7 @@ export default function StockTradeView({ detail }: { detail: TradeDetail }) {
       {detail.profitLoss ? (
         <ProfitLossCard pl={detail.profitLoss} />
       ) : (
-        <div className="dashboard-card p-6 text-sm text-gray-500">
+        <div className="dashboard-card p-6 text-sm text-slate-500">
           Profit/loss estimate unavailable —{" "}
           {detail.buy
             ? "price data is missing for this ticker."

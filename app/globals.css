@@ -1,27 +1,140 @@
 @import "tailwindcss";
 
+/*
+  Uncle Sam's Stockings — "The Ledger"
+  Editorial Data Desk: engraved-print masthead over a cool document paper,
+  numbers set like a ledger column, one ownable interactive accent.
+*/
 :root {
-  --background: #f6f8fb;
-  --foreground: #111827;
+  --paper: #f5f7fa;        /* cool document canvas (never cream) */
+  --surface: #ffffff;      /* cards / panels */
+  --surface-muted: #eef2f7;/* row hovers, quiet fills */
+  --ink: #14181f;          /* primary text — the engraving ink */
+  --plate: #12161d;        /* masthead / nameplate plate */
+  --body: #475569;         /* secondary text (≈7:1 on paper) */
+  --muted: #64748b;        /* meta text — AA-safe, never slate-400 */
+  --line: #dfe4eb;         /* hairline card edges */
+  --rule: #c3ccd8;         /* the drawn ledger rule (stronger than a border) */
+  --accent: #1d4e89;       /* the single interactive accent — ownable navy */
+  --accent-deep: #153a67;  /* hover / press */
+  --gain: #157f3b;         /* P/L up — reserved */
+  --loss: #c42a2a;         /* P/L down — reserved */
+
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-ink: var(--ink);
+  --color-plate: var(--plate);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+
+  --font-sans: var(--font-public-sans), system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-display: var(--font-libre-bodoni), Georgia, "Times New Roman", serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-public-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* Cards: flat at rest, hairline edge; depth is feedback, not decoration. */
 .dashboard-card {
-  @apply bg-white border border-gray-200 rounded-2xl shadow-sm;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
 }
 
 .card-hover {
-  @apply transition hover:shadow-md;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-hover:hover {
+  border-color: var(--rule);
+  box-shadow: 0 10px 30px -18px rgb(20 24 31 / 0.35);
+}
+
+/*
+  Signature — the double "ledger rule": a heavy line trailed by a hairline,
+  the way the head of a ledger sheet or the border of a banknote is drawn.
+  It marks a record, and recurs as the section divider across the product.
+*/
+.ledger-rule {
+  height: 3px;
+  border-top: 2px solid var(--ink);
+  position: relative;
+}
+.ledger-rule::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 3px;
+  border-top: 1px solid var(--rule);
+}
+/* Light-on-dark variant for the masthead plate. */
+.ledger-rule-invert {
+  border-top-color: rgb(255 255 255 / 0.82);
+}
+.ledger-rule-invert::after {
+  border-top-color: rgb(255 255 255 / 0.24);
+}
+
+/* Ledger numerals — every comparable figure aligns on the column. */
+.stat-figure {
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Field label — the ledger/record caption voice (mono small-caps). */
+.field-label {
+  font-family: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Civic-navy focus ring for keyboard users (One-Accent Rule). */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* On the dark masthead plate the accent navy would vanish — ring in light. */
+.focus-ring-invert:focus-visible {
+  outline: 2px solid rgb(255 255 255 / 0.9);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Every transition/animation degrades to instant for reduced-motion users. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

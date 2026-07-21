@@ -23,14 +23,14 @@ export default function MemberHeader({ member }: MemberHeaderProps) {
       ? "bg-blue-600"
       : member.party === "R"
       ? "bg-red-600"
-      : "bg-gray-500"
+      : "bg-slate-500"
 
   const partyRing =
     member.party === "D"
       ? "ring-blue-500"
       : member.party === "R"
       ? "ring-red-500"
-      : "ring-gray-400"
+      : "ring-slate-400"
 
   const partyLabel =
     member.party === "D"
@@ -51,7 +51,7 @@ export default function MemberHeader({ member }: MemberHeaderProps) {
 <div className="flex items-center gap-7">
 
 <div
-className={`shrink-0 h-32 w-32 overflow-hidden rounded-2xl bg-gray-100 ring-4 ring-offset-2 ${partyRing}`}
+className={`shrink-0 h-32 w-32 overflow-hidden rounded-2xl bg-slate-100 ring-4 ring-offset-2 ${partyRing}`}
 >
 {member.imageUrl ? (
 <Image
@@ -64,7 +64,7 @@ priority
 unoptimized
 />
 ) : (
-<div className="flex h-full w-full items-center justify-center text-3xl font-bold text-gray-400">
+<div className="flex h-full w-full items-center justify-center text-3xl font-bold text-slate-600">
 {getInitials(member.name)}
 </div>
 )}
@@ -72,7 +72,7 @@ unoptimized
 
 <div className="flex flex-col gap-3">
 
-<h1 className="text-4xl font-bold text-gray-900">
+<h1 className="font-display text-[2.5rem] font-medium leading-tight tracking-[-0.01em] text-ink">
 {member.name}
 </h1>
 
@@ -83,7 +83,7 @@ className={`inline-flex w-fit px-4 py-1.5 rounded-full text-white text-sm font-s
 </div>
 
 {isNonVoting && (
-<div className="inline-flex w-fit items-center rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600">
+<div className="inline-flex w-fit items-center rounded-full border border-line px-3 py-1 text-xs font-medium text-body">
 Non-voting member of the House
 </div>
 )}
@@ -92,15 +92,15 @@ Non-voting member of the House
 
 </div>
 
-<div className="flex gap-12 pt-6 border-t border-gray-100">
+<div className="flex gap-12 pt-6 border-t border-line">
 
 <div>
 
-<div className="text-sm text-gray-500 mb-1">
+<div className="field-label mb-2">
 Total Raised
 </div>
 
-<div className="text-3xl font-bold">
+<div className="stat-figure text-3xl font-semibold text-ink">
 ${member.totalRaised.toLocaleString()}
 </div>
 
@@ -109,11 +109,11 @@ ${member.totalRaised.toLocaleString()}
 
 <div>
 
-<div className="text-sm text-gray-500 mb-1">
+<div className="field-label mb-2">
 Total Spent
 </div>
 
-<div className="text-3xl font-bold">
+<div className="stat-figure text-3xl font-semibold text-ink">
 ${member.totalSpent.toLocaleString()}
 </div>
 

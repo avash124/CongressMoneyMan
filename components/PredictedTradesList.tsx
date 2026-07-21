@@ -22,13 +22,13 @@ export default function PredictedTradesList({
               <button
                 type="button"
                 onClick={() => setSelected(p)}
-                className="-mx-2 flex w-full items-center justify-between rounded-lg px-2 py-2.5 text-left transition hover:bg-slate-50"
+                className="-mx-2 flex w-full items-center justify-between rounded-lg px-2 py-2.5 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
               >
                 <div className="flex items-center gap-3">
-                  <span className="w-6 text-sm font-medium text-slate-400">
+                  <span className="w-6 text-sm font-mono font-medium tabular-nums text-slate-500">
                     #{p.rank}
                   </span>
-                  <span className="font-semibold text-gray-900">{p.ticker}</span>
+                  <span className="font-mono font-semibold text-slate-900">{p.ticker}</span>
                 </div>
                 <span className="flex items-center gap-2">
                   <span
@@ -36,12 +36,12 @@ export default function PredictedTradesList({
                   >
                     {lean.label}
                     {p.pBuy !== null && (
-                      <span className="font-normal opacity-70">
+                      <span className="font-mono font-normal tabular-nums opacity-70">
                         {formatPct(p.pBuy)}
                       </span>
                     )}
                   </span>
-                  <span className="text-xs text-slate-400">Details ›</span>
+                  <span className="text-xs text-slate-500">Details ›</span>
                 </span>
               </button>
             </li>
@@ -123,7 +123,7 @@ function PredictionDetailModal({
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-gray-900">
+              <h3 className="text-lg font-mono font-bold text-slate-900">
                 {prediction.ticker}
               </h3>
               <span
@@ -131,7 +131,7 @@ function PredictionDetailModal({
               >
                 {lean.label}
                 {prediction.pBuy !== null && (
-                  <span className="font-normal opacity-70">
+                  <span className="font-mono font-normal tabular-nums opacity-70">
                     {formatPct(prediction.pBuy)}
                   </span>
                 )}
@@ -144,7 +144,7 @@ function PredictionDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus-ring"
             aria-label="Close"
           >
             ✕
@@ -159,7 +159,7 @@ function PredictionDetailModal({
         {ctx && !loading && (
           <div className="mt-5 space-y-5 text-sm">
             <section>
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 This member &amp; {prediction.ticker}
               </h4>
               {mh?.hasHistory ? (
@@ -184,7 +184,7 @@ function PredictionDetailModal({
 
             {tc && (
               <section>
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {prediction.ticker} across Congress
                 </h4>
                 <ul className="mt-2 space-y-1">
@@ -220,7 +220,7 @@ function PredictionDetailModal({
                     />
                   )}
                 </ul>
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-xs text-slate-600">
                   Congress-wide historical estimates from disclosed trades — past
                   performance, not a forecast of this trade.
                 </p>
@@ -229,7 +229,7 @@ function PredictionDetailModal({
           </div>
         )}
 
-        <p className="mt-6 border-t border-slate-100 pt-4 text-xs text-slate-400">
+        <p className="mt-6 border-t border-slate-100 pt-4 text-xs text-slate-600">
           This is a predicted, not-yet-made trade from an experimental model.
           Figures are positional and historical context only — not financial
           advice.
@@ -253,11 +253,11 @@ function Stat({
       ? "text-green-700"
       : accent === "neg"
       ? "text-red-700"
-      : "text-gray-900"
+      : "text-slate-900"
   return (
     <li className="flex items-center justify-between gap-4">
       <span className="text-slate-500">{label}</span>
-      <span className={`font-medium ${color}`}>{value}</span>
+      <span className={`font-mono font-medium tabular-nums ${color}`}>{value}</span>
     </li>
   )
 }

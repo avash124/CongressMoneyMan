@@ -30,9 +30,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-CLAUDE.md
-PRODUCTION_ARCHITECTURE_HANDOFF.md 
-
+/CLAUDE.md
+/PRODUCTION_ARCHITECTURE_HANDOFF.md 
 /docs/
 /pytest_cache/
 /.claude/
@@ -41,3 +40,7 @@ PRODUCTION_ARCHITECTURE_HANDOFF.md
 /backend/tests/
 /backend/.pytest_cache/
 /.pytest_cache/
+/.impeccable/
+/DESIGN.md 
+/PRODUCT.md
+/DESIGN_ALIGNMENT_HANDOFF.md

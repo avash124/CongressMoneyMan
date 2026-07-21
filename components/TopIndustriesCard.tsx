@@ -14,13 +14,13 @@ return(
 
 <div className="dashboard-card p-8 min-w-[320px] h-fit">
 
-<h2 className="text-xl font-semibold text-gray-900 mb-6">
+<h2 className="text-xl font-semibold text-slate-900 mb-6">
 Top Supporting Industries
 </h2>
 
 {topThree.length === 0 ? (
 
-<p className="text-gray-500">
+<p className="text-slate-500">
 No industry data available.
 </p>
 
@@ -31,14 +31,14 @@ No industry data available.
 {topThree.map((industry,index)=>(
 <div
 key={industry.name}
-className="flex justify-between items-center border-b border-gray-200 pb-3"
+className="flex justify-between items-center border-b border-slate-200 pb-3"
 >
 
-<span className="text-gray-700">
+<span className="text-slate-700">
 {index+1}. {industry.name}
 </span>
 
-<span className="font-semibold">
+<span className="font-mono font-semibold tabular-nums">
 ${industry.amount.toLocaleString()}
 </span>
 

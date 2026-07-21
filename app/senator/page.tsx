@@ -12,7 +12,7 @@ export default function SenatorIndexPage() {
           </p>
           <Link
             href="/Senate"
-            className="mt-4 inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+            className="mt-4 inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-ring"
           >
             Back to Senate
           </Link>

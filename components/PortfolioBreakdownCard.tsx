@@ -34,14 +34,14 @@ export default function PortfolioBreakdownCard({
   return (
     <div className="dashboard-card card-hover p-8">
       <div className="mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">Portfolio Breakdown</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 className="text-xl font-semibold text-slate-900">Portfolio Breakdown</h2>
+        <p className="mt-1 text-sm text-slate-500">
           Estimated holdings by asset type, based on disclosed trades.
         </p>
       </div>
 
       {allocations.length === 0 || total === 0 ? (
-        <p className="text-gray-500">No portfolio data available.</p>
+        <p className="text-slate-500">No portfolio data available.</p>
       ) : (
         <div className="flex flex-col items-center gap-8 lg:flex-row lg:gap-12">
           {}
@@ -59,10 +59,10 @@ export default function PortfolioBreakdownCard({
               <Tooltip formatter={(value) => usd.format(Number(value))} />
             </PieChart>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-xs uppercase tracking-wide text-gray-400">
+              <span className="text-xs uppercase tracking-wide text-slate-500">
                 Total
               </span>
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="text-2xl font-mono font-bold tabular-nums text-slate-900">
                 {usd.format(total)}
               </span>
             </div>
@@ -76,11 +76,11 @@ export default function PortfolioBreakdownCard({
                   className="h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: COLORS[i % COLORS.length] }}
                 />
-                <span className="flex-1 truncate text-gray-700">{a.category}</span>
-                <span className="font-semibold text-gray-900">
+                <span className="flex-1 truncate text-slate-700">{a.category}</span>
+                <span className="font-mono font-semibold tabular-nums text-slate-900">
                   {usd.format(a.value)}
                 </span>
-                <span className="w-14 text-right text-sm text-gray-500">
+                <span className="w-14 text-right font-mono text-sm tabular-nums text-slate-500">
                   {((a.value / total) * 100).toFixed(1)}%
                 </span>
               </li>

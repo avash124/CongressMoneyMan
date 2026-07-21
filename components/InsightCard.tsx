@@ -24,17 +24,18 @@ export default async function InsightCard({ path, title }: InsightCardProps) {
 
   return (
     <div className="dashboard-card p-8 h-fit">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">{title}</h2>
+      <h2 className="font-display text-2xl leading-tight text-ink">{title}</h2>
+      <div className="ledger-rule mt-4 mb-5" role="presentation" />
 
-      <div className="space-y-3">
+      <div className="max-w-[68ch] space-y-3">
         {paragraphs.map((paragraph, index) => (
-          <p key={index} className="text-gray-700 leading-relaxed">
+          <p key={index} className="leading-relaxed text-body text-pretty">
             {paragraph}
           </p>
         ))}
       </div>
 
-      <p className="mt-6 text-xs text-gray-400">
+      <p className="mt-6 text-xs text-muted">
         AI-generated from disclosed trades. Dollar figures are midpoint
         estimates of disclosure ranges, not exact amounts.
       </p>
