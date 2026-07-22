@@ -279,6 +279,17 @@ async def get_all_fec_candidates() -> list[dict]:
     )
 
 
+async def fetch_resolved_fec_bioguides(cycle: int) -> list[str]:
+    """Bioguide ids already resolved in `fec_candidates` for a cycle, so a
+    sync run can skip them and work only the remaining gap."""
+    rows = await _select_all_pages(
+        "fec_candidates",
+        {"select": "bioguide_id", "cycle": f"eq.{cycle}"},
+        f"fetch_resolved_fec_bioguides({cycle})",
+    )
+    return [row["bioguide_id"] for row in rows if row.get("bioguide_id")]
+
+
 async def upsert_fec_candidate(row: dict) -> None:
     stamped = {**row, "fetched_at": now_iso()}
     try:

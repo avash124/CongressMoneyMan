@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from ..clients.congress import fetch_house_members, fetch_senate_members, get_state_code
-from ..clients.fec import fetch_fec_totals, fetch_pac_donations
+from ..clients.fec import FecUnavailable, fetch_fec_totals, fetch_pac_donations
 from ..clients.quiver import (
     fetch_all_congress_trades,
     fetch_bulk_congress_trades,
@@ -12,6 +12,7 @@ from ..clients.quiver import (
 )
 from ..config import fec_api_key, quiver_api_key, require_congress_api_key
 from ..core.db import (
+    fetch_resolved_fec_bioguides,
     replace_pac_donations,
     upsert_fec_candidate,
     upsert_members,
@@ -169,9 +170,10 @@ async def sync_disclosures() -> dict:
 
 FEC_CONCURRENCY = 4
 FEC_DELAY_MS = 150
+FEC_ERROR_BUDGET = 25
 
 
-async def sync_fec() -> dict:
+async def sync_fec(force: bool = False) -> dict:
     api_key = require_congress_api_key()
     fec_key = fec_api_key()
     if not fec_key:
@@ -181,7 +183,7 @@ async def sync_fec() -> dict:
         fetch_house_members(api_key), fetch_senate_members(api_key)
     )
 
-    targets = [
+    roster = [
         *(
             {
                 "id": m["id"],
@@ -207,45 +209,95 @@ async def sync_fec() -> dict:
     ]
 
     cycle = current_cycle()
+
+    # Each run works only the members not yet resolved for this cycle. The full
+    # roster is thousands of FEC calls and trips the error budget before it
+    # finishes, so re-attempting everyone every run never converges. `force`
+    # re-attempts the whole roster (new cycle, or to refresh stale rows).
+    targets = roster
+    if not force:
+        resolved_ids = set(await fetch_resolved_fec_bioguides(cycle))
+        targets = [t for t in roster if t["id"] not in resolved_ids]
+
     resolved = 0
+    unresolved = 0
+    errors = 0
 
     async def process(target: dict) -> None:
-        nonlocal resolved
-        ref = await resolve_fec_candidate(
-            name=target["name"],
-            state_code=get_state_code(target["state"]),
-            office=target["office"],
-            prefer_incumbent=target["preferIncumbent"],
-            per_page=target["perPage"],
-        )
-        if not ref:
+        nonlocal resolved, unresolved, errors
+        if errors >= FEC_ERROR_BUDGET:
             return
-        resolved += 1
 
-        totals = await fetch_fec_totals(ref["candidateId"], fec_key)
-        await upsert_fec_candidate(
-            {
-                "bioguide_id": target["id"],
-                "candidate_id": ref["candidateId"],
-                "committee_ids": ref["committeeIds"],
-                "total_raised": (totals or {}).get("receipts") or 0,
-                "total_spent": (totals or {}).get("disbursements") or 0,
-                "cycle": cycle,
-            }
-        )
+        try:
+            ref = await resolve_fec_candidate(
+                name=target["name"],
+                state_code=get_state_code(target["state"]),
+                office=target["office"],
+                prefer_incumbent=target["preferIncumbent"],
+                per_page=target["perPage"],
+            )
+            if not ref:
+                unresolved += 1
+                return
 
-        donations = await fetch_pac_donations(ref["committeeIds"], fec_key)
-        rows = [
-            {
-                "bioguide_id": target["id"],
-                "pac_name": d["pacName"],
-                "amount": d["amount"],
-                "cycle": cycle,
-            }
-            for d in aggregate_donors(donations["allDonations"])
-        ]
-        await replace_pac_donations(target["id"], rows)
+            totals = await fetch_fec_totals(ref["candidateId"], fec_key)
+            await upsert_fec_candidate(
+                {
+                    "bioguide_id": target["id"],
+                    "candidate_id": ref["candidateId"],
+                    "committee_ids": ref["committeeIds"],
+                    "total_raised": (totals or {}).get("receipts") or 0,
+                    "total_spent": (totals or {}).get("disbursements") or 0,
+                    "cycle": cycle,
+                }
+            )
+
+            donations = await fetch_pac_donations(ref["committeeIds"], fec_key)
+            rows = [
+                {
+                    "bioguide_id": target["id"],
+                    "pac_name": d["pacName"],
+                    "amount": d["amount"],
+                    "cycle": cycle,
+                }
+                for d in aggregate_donors(donations["allDonations"])
+            ]
+            await replace_pac_donations(target["id"], rows)
+            resolved += 1
+        except FecUnavailable as error:
+            errors += 1
+            logger.warning("fec: %s refused by FEC: %s", target["id"], error)
+            if errors >= FEC_ERROR_BUDGET:
+                logger.error(
+                    "fec: giving up after %s upstream failures — %s of %s members "
+                    "left unattempted",
+                    errors,
+                    len(targets) - resolved - unresolved - errors,
+                    len(targets),
+                )
 
     await map_with_concurrency(targets, FEC_CONCURRENCY, process, FEC_DELAY_MS)
 
-    return {"members": len(targets), "resolved": resolved}
+    attempted = resolved + unresolved + errors
+    complete = errors == 0 and attempted == len(targets)
+    result = {
+        "members": len(targets),
+        "attempted": attempted,
+        "resolved": resolved,
+        "unresolved": unresolved,
+        "errors": errors,
+        "skipped": len(roster) - len(targets),
+        "complete": complete,
+    }
+    log = logger.info if complete else logger.error
+    log(
+        "fec: %s run — %s/%s members attempted, %s resolved, %s with no FEC match, "
+        "%s upstream failures",
+        "complete" if complete else "INCOMPLETE",
+        attempted,
+        len(targets),
+        resolved,
+        unresolved,
+        errors,
+    )
+    return result
