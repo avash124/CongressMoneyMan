@@ -1,19 +1,83 @@
 """OpenFEC client (port of lib/fec.ts)."""
 
+import asyncio
 import datetime
+import logging
+import random
 
 from ..core.cache import get_cache, set_cache
 from ..core.http import shared_client
 from ..services.industry_classifier import categorize_industry
 
+logger = logging.getLogger("fec")
+
 FEC_TOTALS_TTL_SECONDS = 6 * 60 * 60
 FEC_PAC_TTL_SECONDS = 6 * 60 * 60
+FEC_CAND_TTL_SECONDS = 6 * 60 * 60
 
 SCHEDULE_A_URL = "https://api.open.fec.gov/v1/schedules/schedule_a/"
 
+MAX_RETRIES = 3
+RETRY_BASE_DELAYS_MS = [1000, 3000, 8000]
+MAX_RETRY_AFTER_SECONDS = 60
+
+
+class FecUnavailable(Exception):
+    """FEC refused the request — rate limit, rejected key, or persistent 5xx.
+
+    Raised rather than returned so a throttled run can never be recorded as
+    "this member has no FEC record."
+    """
+
+
+def _retry_after_seconds(response) -> float | None:
+    raw = response.headers.get("Retry-After")
+    if not raw or not raw.strip().isdigit():
+        return None
+    return min(float(raw.strip()), MAX_RETRY_AFTER_SECONDS)
+
+
+async def fec_get(url: str, params: dict) -> dict | None:
+    """Returns parsed JSON, or None for a 4xx that genuinely means "no data".
+
+    Raises FecUnavailable when the API is refusing us: 429, 403, or a 5xx that
+    outlived its retries.
+    """
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = await shared_client().get(url, params=params)
+        except Exception as error:
+            if attempt == MAX_RETRIES:
+                raise FecUnavailable(f"request failed: {error}") from error
+            await asyncio.sleep(RETRY_BASE_DELAYS_MS[attempt] / 1000)
+            continue
+
+        if response.status_code < 400:
+            return response.json()
+
+        if response.status_code == 403:
+            raise FecUnavailable("403 — FEC_API_KEY rejected or out of quota")
+
+        if response.status_code != 429 and response.status_code < 500:
+            logger.warning("%s on %s", response.status_code, url)
+            return None
+
+        if attempt == MAX_RETRIES:
+            raise FecUnavailable(
+                f"{response.status_code} after {MAX_RETRIES} retries"
+            )
+
+        delay = _retry_after_seconds(response)
+        if delay is None:
+            delay = (RETRY_BASE_DELAYS_MS[attempt] + random.randint(0, 249)) / 1000
+        logger.warning("%s — retrying in %.1fs", response.status_code, delay)
+        await asyncio.sleep(delay)
+
+    return None
+
 
 async def fetch_pac_donations(
-    committee_ids: list[str], api_key: str, max_pages: int = 15
+    committee_ids: list[str], api_key: str, max_pages: int = 5
 ) -> dict:
     """Returns {"topDonors": [...], "allDonations": [...]} like the TS original."""
     if not committee_ids or not api_key:
@@ -48,11 +112,10 @@ async def fetch_pac_donations(
             if last_date:
                 params["last_contribution_receipt_date"] = last_date
 
-            response = await shared_client().get(SCHEDULE_A_URL, params=params)
-            if response.status_code >= 400:
+            data = await fec_get(SCHEDULE_A_URL, params)
+            if data is None:
                 break
 
-            data = response.json()
             results = data.get("results") or []
             if not results:
                 break
@@ -101,14 +164,14 @@ async def fetch_fec_totals(candidate_id: str, api_key: str) -> dict | None:
     if cached:
         return cached
 
-    response = await shared_client().get(
+    data = await fec_get(
         f"https://api.open.fec.gov/v1/candidate/{candidate_id}/totals/",
-        params={"api_key": api_key},
+        {"api_key": api_key},
     )
-    if response.status_code >= 400:
+    if data is None:
         return None
 
-    results = response.json().get("results") or []
+    results = data.get("results") or []
     totals = results[0] if results else None
     if totals:
         await set_cache(cache_key, totals, FEC_TOTALS_TTL_SECONDS)

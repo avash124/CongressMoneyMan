@@ -44,3 +44,6 @@ next-env.d.ts
 /DESIGN.md 
 /PRODUCT.md
 /DESIGN_ALIGNMENT_HANDOFF.md
+/backend/scripts/
+/fec-coverage-handoff.md
+/metrics.md 

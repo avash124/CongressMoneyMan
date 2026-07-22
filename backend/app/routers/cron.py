@@ -135,13 +135,13 @@ async def cron_sync_members(request: Request):
 
 
 @router.get("/api/cron/sync-fec")
-async def cron_sync_fec(request: Request):
+async def cron_sync_fec(request: Request, force: bool = False):
     denied = _unauthorized(request)
     if denied:
         return denied
 
     try:
-        result = await sync_fec()
+        result = await sync_fec(force=force)
         return {"ok": True, **result, "syncedAt": now_iso()}
     except Exception as error:
         message = str(error) or "Failed to sync FEC data"

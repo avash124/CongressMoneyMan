@@ -12,7 +12,13 @@ import math
 import re
 
 from ..clients.congress import get_state_code
-from ..clients.fec import compute_top_industries, fetch_fec_totals, fetch_pac_donations
+from ..clients.fec import (
+    FEC_CAND_TTL_SECONDS,
+    compute_top_industries,
+    fec_get,
+    fetch_fec_totals,
+    fetch_pac_donations,
+)
 from ..clients.quiver import (
     classify_transaction,
     fetch_all_congress_trades,
@@ -20,6 +26,7 @@ from ..clients.quiver import (
     parse_trade_range,
 )
 from ..config import fec_api_key, quiver_api_key
+from ..core.cache import get_cache, set_cache
 from ..core.db import (
     get_fec_candidate_from_db,
     get_holdings_by_bioguide,
@@ -323,8 +330,13 @@ async def _load_fec_totals(member_id: str, resolve_ref) -> dict:
             "totalSpent": stored["total_spent"],
         }
 
-    ref = await resolve_ref()
-    totals = await _totals_from_candidate(ref, fec_api_key())
+    try:
+        ref = await resolve_ref()
+        totals = await _totals_from_candidate(ref, fec_api_key())
+    except Exception as error:
+        logger.warning("load_fec_totals(%s) failed: %s", member_id, error)
+        return EMPTY_TOTALS
+
     if ref:
         write_back(
             upsert_fec_candidate(
@@ -431,21 +443,26 @@ async def resolve_fec_candidate(
     if not api_key or not state_code:
         return None
 
-    response = await shared_client().get(
-        "https://api.open.fec.gov/v1/candidates/search/",
-        params={
-            "api_key": api_key,
-            "name": name,
-            "state": state_code,
-            "office": office,
-            "cycle": str(current_cycle()),
-            "per_page": str(per_page),
-        },
-    )
-    if response.status_code >= 400:
-        return None
+    cycle = current_cycle()
+    cache_key = f"fec-cand:{name}:{state_code}:{office}:{cycle}"
+    data = await get_cache(cache_key)
+    if data is None:
+        data = await fec_get(
+            "https://api.open.fec.gov/v1/candidates/search/",
+            {
+                "api_key": api_key,
+                "name": name,
+                "state": state_code,
+                "office": office,
+                "cycle": str(cycle),
+                "per_page": str(per_page),
+            },
+        )
+        if data is None:
+            return None
+        await set_cache(cache_key, data, FEC_CAND_TTL_SECONDS)
 
-    results = response.json().get("results") or []
+    results = data.get("results") or []
     candidate = None
     if prefer_incumbent:
         candidate = (
